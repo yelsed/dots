@@ -3,6 +3,11 @@ name = "dots"
 version = "0.1.0"
 edition = "2021"
 description = "A cross-platform dotfile sync tool"
+license = "MIT"
+repository = "https://github.com/yelsed/dots"
+readme = "README.md"
+keywords = ["dotfiles", "cli", "sync", "config", "cross-platform"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
