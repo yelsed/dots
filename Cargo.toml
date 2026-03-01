@@ -1,0 +1,19 @@
+[package]
+name = "dots"
+version = "0.1.0"
+edition = "2021"
+description = "A cross-platform dotfile sync tool"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+notify = "7"
+git2 = "0.19"
+dialoguer = "0.11"
+colored = "2"
+notify-rust = "4"
+anyhow = "1"
+dirs = "6"
+sha2 = "0.10"
+hex = "0.4"
