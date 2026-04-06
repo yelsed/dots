@@ -84,7 +84,7 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
 }
 
 /// Determine where in the repo structure a path should go
-fn determine_repo_path(source_path: &PathBuf, platforms: &[Platform]) -> Result<String> {
+pub fn determine_repo_path(source_path: &PathBuf, platforms: &[Platform]) -> Result<String> {
     let home = dirs::home_dir().context("No home directory")?;
     let config_dir = home.join(".config");
 

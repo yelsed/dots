@@ -55,6 +55,15 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Scan for AI agent configs (Claude, Cursor, Copilot, etc.) and bulk-add them
+    Scan {
+        /// Only scan a specific agent (e.g. claude, cursor, copilot, codex, gemini, continue)
+        #[arg(short, long)]
+        target: Option<String>,
+        /// Platform(s) for added entries (default: all)
+        #[arg(short = 'P', long)]
+        platforms: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -68,5 +77,6 @@ fn main() -> Result<()> {
         Commands::Push { message } => commands::push::run(message),
         Commands::Status => commands::status::run(),
         Commands::Link { force } => commands::link::run(force),
+        Commands::Scan { target, platforms } => commands::scan::run(target, platforms),
     }
 }
