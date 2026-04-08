@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "dots", about = "Cross-platform dotfile sync tool")]
+#[command(name = "dots", about = "Cross-platform dotfile sync tool", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
