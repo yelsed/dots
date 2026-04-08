@@ -4,12 +4,19 @@ use std::path::{Path, PathBuf};
 
 use crate::platform::Platform;
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct RsyncConfig {
+    pub host: Option<String>,
+    pub dest: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DotsConfig {
     pub repo: RepoConfig,
     pub watch: WatchConfig,
     #[serde(default)]
     pub entry: Vec<Entry>,
+    pub rsync: Option<RsyncConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

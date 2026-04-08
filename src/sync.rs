@@ -126,6 +126,7 @@ pub fn diff_summary(
     let mut changes = Vec::new();
 
     for entry in entries {
+        eprintln!("  checking: {}", entry.repo_path);
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
 

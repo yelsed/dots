@@ -49,6 +49,7 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
             },
             watch: WatchConfig { debounce_secs: 3 },
             entry: default_entries(),
+            rsync: None,
         };
         config.save(&toml_path)?;
         println!("{}", "Created dots.toml with default entries.".green());

@@ -55,6 +55,20 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Rsync a folder to a remote machine over SSH
+    Rsync {
+        /// Local folder to sync
+        path: String,
+        /// Remote host (e.g. user@192.168.1.100), overrides dots.toml
+        #[arg(long)]
+        host: Option<String>,
+        /// Destination path on remote, overrides dots.toml
+        #[arg(long)]
+        dest: Option<String>,
+        /// Show what would be transferred without actually doing it
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Scan for AI agent configs (Claude, Cursor, Copilot, etc.) and bulk-add them
     Scan {
         /// Only scan a specific agent (e.g. claude, cursor, copilot, codex, gemini, continue)
@@ -77,6 +91,7 @@ fn main() -> Result<()> {
         Commands::Push { message } => commands::push::run(message),
         Commands::Status => commands::status::run(),
         Commands::Link { force } => commands::link::run(force),
+        Commands::Rsync { path, host, dest, dry_run } => commands::rsync::run(path, host, dest, dry_run),
         Commands::Scan { target, platforms } => commands::scan::run(target, platforms),
     }
 }

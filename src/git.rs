@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use git2::{Cred, FetchOptions, PushOptions, RemoteCallbacks, Repository, Signature};
+use std::cell::Cell;
 use std::path::Path;
 
 /// Open the git repository at the given path
@@ -9,11 +10,8 @@ pub fn open_repo(path: &Path) -> Result<Repository> {
 
 /// Clone a remote repository
 pub fn clone_repo(url: &str, path: &Path) -> Result<Repository> {
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(credential_callback);
-
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.remote_callbacks(auth_callbacks());
 
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fetch_opts);
@@ -62,11 +60,8 @@ pub fn push(repo: &Repository, remote_name: &str) -> Result<()> {
         .unwrap_or("main");
     let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
 
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(credential_callback);
-
     let mut push_opts = PushOptions::new();
-    push_opts.remote_callbacks(callbacks);
+    push_opts.remote_callbacks(auth_callbacks());
 
     remote
         .push(&[&refspec], Some(&mut push_opts))
@@ -79,11 +74,8 @@ pub fn push(repo: &Repository, remote_name: &str) -> Result<()> {
 pub fn fetch_and_check(repo: &Repository, remote_name: &str) -> Result<RemoteStatus> {
     let mut remote = repo.find_remote(remote_name)?;
 
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(credential_callback);
-
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.remote_callbacks(auth_callbacks());
 
     remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None)?;
 
@@ -117,11 +109,8 @@ pub fn fetch_and_check(repo: &Repository, remote_name: &str) -> Result<RemoteSta
 pub fn pull(repo: &Repository, remote_name: &str) -> Result<()> {
     let mut remote = repo.find_remote(remote_name)?;
 
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(credential_callback);
-
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.remote_callbacks(auth_callbacks());
 
     remote.fetch(&[] as &[&str], Some(&mut fetch_opts), None)?;
 
@@ -199,6 +188,22 @@ fn get_signature(repo: &Repository) -> Result<Signature<'static>> {
         )?),
         Err(_) => Ok(Signature::now("dots", "dots@localhost")?),
     }
+}
+
+fn auth_callbacks<'a>() -> RemoteCallbacks<'a> {
+    let mut callbacks = RemoteCallbacks::new();
+    let attempts = Cell::new(0usize);
+    callbacks.credentials(move |url, username, allowed| {
+        let n = attempts.get();
+        if n >= 3 {
+            return Err(git2::Error::from_str(
+                "SSH authentication failed. Ensure your SSH key is loaded: ssh-add ~/.ssh/id_ed25519",
+            ));
+        }
+        attempts.set(n + 1);
+        credential_callback(url, username, allowed)
+    });
+    callbacks
 }
 
 fn credential_callback(

@@ -8,6 +8,8 @@ use crate::sync::{self, ChangeStatus};
 pub fn run(message: Option<String>) -> Result<()> {
     let (config, repo_root) = DotsConfig::load_default()?;
     let entries = config.platform_entries();
+
+    println!("{}", "Scanning entries...".bold());
     let changes = sync::diff_summary(&entries, &repo_root)?;
 
     let modified: Vec<_> = changes
