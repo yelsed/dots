@@ -48,7 +48,11 @@ enum Commands {
         message: Option<String>,
     },
     /// Show tracked entries, what's changed, current platform
-    Status,
+    Status {
+        /// Skip fetching from remote (offline mode)
+        #[arg(long)]
+        no_fetch: bool,
+    },
     /// Copy all platform-relevant configs from repo to system
     Link {
         /// Force overwrite existing files
@@ -89,7 +93,7 @@ fn main() -> Result<()> {
         Commands::Watch { poll_interval } => commands::watch::run(poll_interval),
         Commands::Pull => commands::pull::run(),
         Commands::Push { message } => commands::push::run(message),
-        Commands::Status => commands::status::run(),
+        Commands::Status { no_fetch } => commands::status::run(no_fetch),
         Commands::Link { force } => commands::link::run(force),
         Commands::Rsync { path, host, dest, dry_run } => commands::rsync::run(path, host, dest, dry_run),
         Commands::Scan { target, platforms } => commands::scan::run(target, platforms),

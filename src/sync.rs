@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
+use std::time::SystemTime;
 
 /// Copy a file or directory from source to destination
 pub fn copy_entry(src: &Path, dst: &Path) -> Result<()> {
@@ -110,6 +111,33 @@ fn list_files_recursive(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(files)
 }
 
+/// Most recent modification time for a file, or for the newest file within a directory (recursive).
+/// Returns `None` if the path does not exist or contains no files.
+pub fn last_modified(path: &Path) -> Result<Option<SystemTime>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    if path.is_file() {
+        let meta = fs::metadata(path)
+            .with_context(|| format!("Failed to stat {}", path.display()))?;
+        return Ok(Some(meta.modified()?));
+    }
+    // Directory: walk and take the max mtime
+    let files = list_files_recursive(path)?;
+    let mut newest: Option<SystemTime> = None;
+    for f in files {
+        if let Ok(meta) = fs::metadata(&f) {
+            if let Ok(m) = meta.modified() {
+                newest = Some(match newest {
+                    Some(prev) if prev >= m => prev,
+                    _ => m,
+                });
+            }
+        }
+    }
+    Ok(newest)
+}
+
 /// SHA256 hash of a file
 fn file_hash(path: &Path) -> Result<String> {
     let content = fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -126,7 +154,6 @@ pub fn diff_summary(
     let mut changes = Vec::new();
 
     for entry in entries {
-        eprintln!("  checking: {}", entry.repo_path);
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
 

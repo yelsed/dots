@@ -140,6 +140,67 @@ pub fn pull(repo: &Repository, remote_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Walk history from HEAD and return the commit time (unix seconds) of the
+/// most recent commit that touched `path` (which may be a file or directory,
+/// specified as a repo-relative path).
+pub fn last_commit_time_for_path(repo: &Repository, path: &str) -> Result<Option<i64>> {
+    let target = std::path::Path::new(path);
+
+    let mut walk = repo.revwalk()?;
+    walk.push_head()?;
+    walk.set_sorting(git2::Sort::TIME)?;
+
+    for oid_result in walk {
+        let oid = oid_result?;
+        let commit = repo.find_commit(oid)?;
+        let tree = commit.tree()?;
+
+        let parent_tree = if commit.parent_count() == 0 {
+            None
+        } else {
+            Some(commit.parent(0)?.tree()?)
+        };
+
+        let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+
+        // Walk deltas via the iterator API — the `foreach` callback treats
+        // returning `false` as a libgit2 error, which would abort the whole
+        // function. Iterating directly lets us break cleanly on a match.
+        let mut touched = false;
+        for delta in diff.deltas() {
+            for file in [delta.old_file().path(), delta.new_file().path()] {
+                if let Some(p) = file {
+                    if p == target || p.starts_with(target) {
+                        touched = true;
+                        break;
+                    }
+                }
+            }
+            if touched {
+                break;
+            }
+        }
+
+        if touched {
+            return Ok(Some(commit.time().seconds()));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Commit time (unix seconds) of the remote tracking branch's HEAD.
+/// Assumes a prior `fetch_and_check` has populated the remote ref.
+pub fn remote_head_time(repo: &Repository, remote_name: &str) -> Result<i64> {
+    let head = repo.head()?;
+    let branch_name = head.shorthand().unwrap_or("main");
+    let remote_ref = format!("refs/remotes/{}/{}", remote_name, branch_name);
+    let reference = repo.find_reference(&remote_ref)?;
+    let oid = reference.target().context("No remote ref target")?;
+    let commit = repo.find_commit(oid)?;
+    Ok(commit.time().seconds())
+}
+
 /// Get list of changed files between local HEAD and remote HEAD
 pub fn changed_files(repo: &Repository, remote_name: &str) -> Result<Vec<String>> {
     let head = repo.head()?;
@@ -201,7 +262,7 @@ fn auth_callbacks<'a>() -> RemoteCallbacks<'a> {
             ));
         }
         attempts.set(n + 1);
-        credential_callback(url, username, allowed)
+        credential_callback(url, username, allowed, n)
     });
     callbacks
 }
@@ -210,12 +271,17 @@ fn credential_callback(
     _url: &str,
     username_from_url: Option<&str>,
     allowed_types: git2::CredentialType,
+    attempt: usize,
 ) -> Result<Cred, git2::Error> {
     if allowed_types.contains(git2::CredentialType::SSH_KEY) {
         let user = username_from_url.unwrap_or("git");
-        // Try SSH agent first, then default key paths
-        if let Ok(cred) = Cred::ssh_key_from_agent(user) {
-            return Ok(cred);
+        // First attempt: try SSH agent. Subsequent attempts: fall back to
+        // on-disk keys, since the agent may be reachable but empty (or may
+        // have keys that the server rejects).
+        if attempt == 0 {
+            if let Ok(cred) = Cred::ssh_key_from_agent(user) {
+                return Ok(cred);
+            }
         }
         let home = dirs::home_dir().unwrap_or_default();
         let key = home.join(".ssh/id_ed25519");
