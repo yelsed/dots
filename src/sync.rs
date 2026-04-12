@@ -148,7 +148,7 @@ fn file_hash(path: &Path) -> Result<String> {
 
 /// Get a list of changed files for display
 pub fn diff_summary(
-    entries: &[&crate::config::Entry],
+    entries: &[crate::config::Entry],
     repo_root: &Path,
 ) -> Result<Vec<ChangedEntry>> {
     let mut changes = Vec::new();
@@ -170,7 +170,7 @@ pub fn diff_summary(
         };
 
         changes.push(ChangedEntry {
-            entry: (*entry).clone(),
+            entry: entry.clone(),
             status,
         });
     }

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::PathBuf;
 
-use crate::config::{DotsConfig, Entry, RepoConfig, RsyncConfig, WatchConfig};
+use crate::config::{DotsConfig, EntriesConfig, RepoConfig, RsyncConfig, WatchConfig};
 use crate::git;
 use crate::platform::Platform;
 
@@ -48,8 +48,9 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
                 remote: "origin".to_string(),
             },
             watch: WatchConfig { debounce_secs: 3 },
-            entry: default_entries(),
+            entries: default_entries(),
             rsync: Some(RsyncConfig::default()),
+            entry: Vec::new(),
         };
         config.save(&toml_path)?;
         println!("{}", "Created dots.toml with default entries.".green());
@@ -88,45 +89,29 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn default_entries() -> Vec<Entry> {
+fn default_entries() -> EntriesConfig {
     let current = Platform::current();
-    let mut entries = vec![
-        Entry {
-            source: "~/.config/nvim".to_string(),
-            repo_path: "shared/nvim".to_string(),
-            platforms: vec![Platform::Linux, Platform::Macos],
-        },
-        Entry {
-            source: "~/.config/ghostty".to_string(),
-            repo_path: "shared/ghostty".to_string(),
-            platforms: vec![Platform::Linux, Platform::Macos],
-        },
-        Entry {
-            source: "~/.bashrc".to_string(),
-            repo_path: "shared/shell/.bashrc".to_string(),
-            platforms: vec![Platform::Linux, Platform::Macos],
-        },
+    let mut entries = EntriesConfig::default();
+
+    // Shared linux + macos entries
+    let unix_defaults = [
+        ("~/.config/nvim", "shared/nvim"),
+        ("~/.config/ghostty", "shared/ghostty"),
+        ("~/.bashrc", "shared/shell/.bashrc"),
     ];
+    for (source, repo_path) in &unix_defaults {
+        entries.linux.insert(source.to_string(), repo_path.to_string());
+        entries.macos.insert(source.to_string(), repo_path.to_string());
+    }
 
     if current == Platform::Linux {
-        entries.push(Entry {
-            source: "~/.config/hypr/bindings.conf".to_string(),
-            repo_path: "linux/hypr/bindings.conf".to_string(),
-            platforms: vec![Platform::Linux],
-        });
-        entries.push(Entry {
-            source: "~/.config/hypr/monitors.conf".to_string(),
-            repo_path: "linux/hypr/monitors.conf".to_string(),
-            platforms: vec![Platform::Linux],
-        });
+        entries.linux.insert("~/.config/hypr/bindings.conf".to_string(), "linux/hypr/bindings.conf".to_string());
+        entries.linux.insert("~/.config/hypr/monitors.conf".to_string(), "linux/hypr/monitors.conf".to_string());
     }
 
     if current == Platform::Macos {
-        entries.push(Entry {
-            source: "~/.config/zed".to_string(),
-            repo_path: "shared/zed".to_string(),
-            platforms: vec![Platform::Linux, Platform::Macos],
-        });
+        entries.linux.insert("~/.config/zed".to_string(), "shared/zed".to_string());
+        entries.macos.insert("~/.config/zed".to_string(), "shared/zed".to_string());
     }
 
     entries

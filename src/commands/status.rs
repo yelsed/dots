@@ -16,18 +16,18 @@ pub fn run(no_fetch: bool) -> Result<()> {
     println!("Repo:     {}", repo_root.display().to_string().cyan());
     println!();
 
-    let entries: Vec<_> = config.entry.iter().collect();
-    let changes = sync::diff_summary(&entries, &repo_root)?;
+    let all = config.all_entries();
+    let changes = sync::diff_summary(&all, &repo_root)?;
 
     let relevant = config.platform_entries();
-    let relevant_paths: Vec<_> = relevant.iter().map(|e| &e.repo_path).collect();
+    let relevant_paths: Vec<_> = relevant.iter().map(|e| e.repo_path.as_str()).collect();
 
     // Opening the repo is best-effort: mtime hints still work without it,
     // we just lose git-commit-time lookups for repo-only / synced entries.
     let repo = git::open_repo(&repo_root).ok();
 
     for change in &changes {
-        let is_relevant = relevant_paths.contains(&&change.entry.repo_path);
+        let is_relevant = relevant_paths.contains(&change.entry.repo_path.as_str());
         let platforms: Vec<_> = change.entry.platforms.iter().map(|p| p.to_string()).collect();
         let platform_str = platforms.join(",");
 

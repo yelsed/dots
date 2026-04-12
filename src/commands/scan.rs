@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::MultiSelect;
 use std::path::PathBuf;
 
-use crate::config::{expand_tilde, DotsConfig, Entry};
+use crate::config::{expand_tilde, DotsConfig};
 use crate::platform::Platform;
 use crate::sync;
 
@@ -89,7 +89,7 @@ pub fn run(target: Option<String>, platforms_arg: Option<String>) -> Result<()> 
             }
 
             // Skip if already tracked
-            if config.entry.iter().any(|e| e.expanded_source() == expanded) {
+            if config.is_tracked(&expanded) {
                 continue;
             }
 
@@ -149,11 +149,7 @@ pub fn run(target: Option<String>, platforms_arg: Option<String>) -> Result<()> 
         sync::copy_entry(&candidate.source_path, &full_repo_path)
             .with_context(|| format!("Failed to copy {}", candidate.source_display))?;
 
-        config.entry.push(Entry {
-            source: candidate.source_display.clone(),
-            repo_path: repo_path.clone(),
-            platforms: platforms.clone(),
-        });
+        config.add_entry(&candidate.source_display, &repo_path, &platforms);
 
         println!(
             "  {} {} -> {}",

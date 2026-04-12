@@ -3,7 +3,7 @@ use colored::Colorize;
 use dialoguer::Select;
 use std::path::PathBuf;
 
-use crate::config::{contract_tilde, DotsConfig, Entry};
+use crate::config::{contract_tilde, DotsConfig};
 use crate::platform::Platform;
 use crate::sync;
 
@@ -29,7 +29,7 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
     let source_str = contract_tilde(&source_path);
 
     // Check if already tracked
-    if config.entry.iter().any(|e| e.expanded_source() == source_path) {
+    if config.is_tracked(&source_path) {
         anyhow::bail!("{} is already tracked", source_str);
     }
 
@@ -71,11 +71,7 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
     println!("  {} Copied to repo", "->".green());
 
     // Add entry to config
-    config.entry.push(Entry {
-        source: source_str,
-        repo_path,
-        platforms,
-    });
+    config.add_entry(&source_str, &repo_path, &platforms);
 
     config.save(&repo_root.join("dots.toml"))?;
     println!("{}", "Entry added to dots.toml".green());

@@ -45,12 +45,13 @@ pub fn run() -> Result<()> {
 
     // Map changed files to entries
     let current = Platform::current();
+    let all_entries = config.all_entries();
     let mut applicable = Vec::new();
     let mut skipped = Vec::new();
 
     for file in &changed {
         // Find matching entry
-        let matching_entry = config.entry.iter().find(|e| {
+        let matching_entry = all_entries.iter().find(|e| {
             file.starts_with(&e.repo_path)
         });
 

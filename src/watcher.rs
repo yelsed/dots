@@ -85,7 +85,7 @@ pub fn run_watcher(config: &DotsConfig, repo_root: &PathBuf, poll_interval_mins:
 }
 
 /// Copy changed files to repo, commit, and push
-fn sync_and_push(config: &DotsConfig, repo_root: &PathBuf, entries: &[&Entry]) -> Result<()> {
+fn sync_and_push(config: &DotsConfig, repo_root: &PathBuf, entries: &[Entry]) -> Result<()> {
     let mut changed_files = Vec::new();
 
     for entry in entries {
