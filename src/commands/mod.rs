@@ -6,4 +6,5 @@ pub mod push;
 pub mod rsync;
 pub mod scan;
 pub mod status;
+pub mod update;
 pub mod watch;

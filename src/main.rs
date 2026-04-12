@@ -73,6 +73,12 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Update dots to the latest release
+    Update {
+        /// Just check for updates, don't install
+        #[arg(long)]
+        check: bool,
+    },
     /// Scan for AI agent configs (Claude, Cursor, Copilot, etc.) and bulk-add them
     Scan {
         /// Only scan a specific agent (e.g. claude, cursor, copilot, codex, gemini, continue)
@@ -96,6 +102,7 @@ fn main() -> Result<()> {
         Commands::Status { no_fetch } => commands::status::run(no_fetch),
         Commands::Link { force } => commands::link::run(force),
         Commands::Rsync { path, host, dest, dry_run } => commands::rsync::run(path, host, dest, dry_run),
+        Commands::Update { check } => commands::update::run(check),
         Commands::Scan { target, platforms } => commands::scan::run(target, platforms),
     }
 }
