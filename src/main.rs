@@ -61,8 +61,8 @@ enum Commands {
     },
     /// Rsync a folder to a remote machine over SSH
     Rsync {
-        /// Local folder to sync
-        path: String,
+        /// Local folder to sync (defaults to [rsync].source in dots.toml, or <repo>/rsync)
+        path: Option<String>,
         /// Remote host (e.g. user@192.168.1.100), overrides dots.toml
         #[arg(long)]
         host: Option<String>,

@@ -6,8 +6,12 @@ use crate::platform::Platform;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct RsyncConfig {
-    pub host: Option<String>,
-    pub dest: Option<String>,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
+    pub dest: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

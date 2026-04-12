@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::PathBuf;
 
-use crate::config::{DotsConfig, Entry, RepoConfig, WatchConfig};
+use crate::config::{DotsConfig, Entry, RepoConfig, RsyncConfig, WatchConfig};
 use crate::git;
 use crate::platform::Platform;
 
@@ -49,10 +49,17 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
             },
             watch: WatchConfig { debounce_secs: 3 },
             entry: default_entries(),
-            rsync: None,
+            rsync: Some(RsyncConfig::default()),
         };
         config.save(&toml_path)?;
         println!("{}", "Created dots.toml with default entries.".green());
+    }
+
+    // Create the default rsync drop folder inside the repo
+    let rsync_dir = repo_path.join("rsync");
+    if !rsync_dir.exists() {
+        std::fs::create_dir_all(&rsync_dir)?;
+        println!("Created rsync drop folder at {}", rsync_dir.display());
     }
 
     // Run link
