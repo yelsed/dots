@@ -42,7 +42,8 @@ pub struct DotsConfig {
     pub watch: WatchConfig,
     #[serde(default)]
     pub entries: EntriesConfig,
-    pub rsync: Option<RsyncConfig>,
+    #[serde(default)]
+    pub rsync: RsyncConfig,
     /// Deprecated: old [[entry]] format. Auto-migrated to `entries` on load.
     #[serde(default, skip_serializing)]
     pub entry: Vec<Entry>,
@@ -92,13 +93,24 @@ impl DotsConfig {
         let mut config: DotsConfig =
             toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
 
+        let mut needs_save = false;
+
         // Auto-migrate old [[entry]] format → new [entries.*] sections
         if !config.entry.is_empty() && config.entries.is_empty() {
             for e in std::mem::take(&mut config.entry) {
                 config.add_entry(&e.source, &e.repo_path, &e.platforms);
             }
-            config.save(path)?;
+            needs_save = true;
             eprintln!("Migrated dots.toml to new platform-grouped format.");
+        }
+
+        // Backfill [rsync] block if the on-disk file never had one
+        if !content.contains("[rsync]") {
+            needs_save = true;
+        }
+
+        if needs_save {
+            config.save(path)?;
         }
 
         Ok(config)

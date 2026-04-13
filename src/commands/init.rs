@@ -49,7 +49,7 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
             },
             watch: WatchConfig { debounce_secs: 3 },
             entries: default_entries(),
-            rsync: Some(RsyncConfig::default()),
+            rsync: RsyncConfig::default(),
             entry: Vec::new(),
         };
         config.save(&toml_path)?;

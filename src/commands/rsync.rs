@@ -19,7 +19,7 @@ pub fn run(
 
     // Load config (may not exist — all resolution falls back to CLI flags then)
     let loaded = DotsConfig::load_default().ok();
-    let rsync_cfg = loaded.as_ref().and_then(|(cfg, _)| cfg.rsync.clone());
+    let rsync_cfg = loaded.as_ref().map(|(cfg, _)| cfg.rsync.clone());
     let repo_root = loaded.as_ref().map(|(_, root)| root.clone());
 
     // Resolve the local source folder
