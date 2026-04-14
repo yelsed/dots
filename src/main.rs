@@ -52,6 +52,9 @@ enum Commands {
         /// Skip fetching from remote (offline mode)
         #[arg(long)]
         no_fetch: bool,
+        /// Show individual changed files for modified directories
+        #[arg(short, long)]
+        verbose: bool,
     },
     /// Copy all platform-relevant configs from repo to system
     Link {
@@ -101,7 +104,7 @@ fn main() -> Result<()> {
         Commands::Watch { poll_interval } => commands::watch::run(poll_interval),
         Commands::Pull => commands::pull::run(),
         Commands::Push { message } => commands::push::run(message),
-        Commands::Status { no_fetch } => commands::status::run(no_fetch),
+        Commands::Status { no_fetch, verbose } => commands::status::run(no_fetch, verbose),
         Commands::Link { force } => commands::link::run(force),
         Commands::Rsync { path, host, dest, dry_run } => commands::rsync::run(path, host, dest, dry_run),
         Commands::Config => commands::config::run(),

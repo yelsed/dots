@@ -7,7 +7,7 @@ use crate::git;
 use crate::platform::Platform;
 use crate::sync::{self, ChangeStatus};
 
-pub fn run(no_fetch: bool) -> Result<()> {
+pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
     let (config, repo_root) = DotsConfig::load_default()?;
     let current = Platform::current();
 
@@ -101,6 +101,50 @@ pub fn run(no_fetch: bool) -> Result<()> {
             platform_str.dimmed(),
             relevance.dimmed(),
         );
+
+        // Show detail sub-line for modified directory entries
+        if let Some(detail) = &change.detail {
+            let mut parts = Vec::new();
+            if detail.content_changed > 0 {
+                parts.push(format!(
+                    "{} file{} changed",
+                    detail.content_changed,
+                    if detail.content_changed == 1 { "" } else { "s" }
+                ));
+            }
+            if detail.local_only > 0 {
+                parts.push(format!(
+                    "{} file{} only locally",
+                    detail.local_only,
+                    if detail.local_only == 1 { "" } else { "s" }
+                ));
+            }
+            if detail.repo_only > 0 {
+                parts.push(format!(
+                    "{} file{} only in repo",
+                    detail.repo_only,
+                    if detail.repo_only == 1 { "" } else { "s" }
+                ));
+            }
+            if !parts.is_empty() {
+                println!(
+                    "             {} {}",
+                    "↳".dimmed(),
+                    parts.join(", ").yellow()
+                );
+                if verbose {
+                    for f in &detail.changed_files {
+                        println!("               {} {}", "~".yellow(), f.display().to_string().dimmed());
+                    }
+                    for f in &detail.local_only_files {
+                        println!("               {} {}", "+".blue(), f.display().to_string().dimmed());
+                    }
+                    for f in &detail.repo_only_files {
+                        println!("               {} {}", "-".magenta(), f.display().to_string().dimmed());
+                    }
+                }
+            }
+        }
     }
 
     let modified_count = changes

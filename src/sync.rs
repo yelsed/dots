@@ -49,7 +49,7 @@ pub fn has_changes(a: &Path, b: &Path) -> Result<bool> {
     if a.is_file() && b.is_file() {
         Ok(file_hash(a)? != file_hash(b)?)
     } else if a.is_dir() && b.is_dir() {
-        dir_has_changes(a, b)
+        Ok(dir_diff(a, b)?.has_changes())
     } else if a.exists() != b.exists() {
         Ok(true)
     } else {
@@ -57,12 +57,37 @@ pub fn has_changes(a: &Path, b: &Path) -> Result<bool> {
     }
 }
 
-/// Compare two directories recursively
-fn dir_has_changes(a: &Path, b: &Path) -> Result<bool> {
+/// Get detailed diff for two directories, or None if not both directories
+pub fn dir_diff_detail(a: &Path, b: &Path) -> Result<Option<DirDiffDetail>> {
+    if a.is_dir() && b.is_dir() {
+        Ok(Some(dir_diff(a, b)?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Detail about how two directories differ
+#[derive(Debug, Clone)]
+pub struct DirDiffDetail {
+    pub local_only: usize,
+    pub repo_only: usize,
+    pub content_changed: usize,
+    pub local_only_files: Vec<std::path::PathBuf>,
+    pub repo_only_files: Vec<std::path::PathBuf>,
+    pub changed_files: Vec<std::path::PathBuf>,
+}
+
+impl DirDiffDetail {
+    pub fn has_changes(&self) -> bool {
+        self.local_only > 0 || self.repo_only > 0 || self.content_changed > 0
+    }
+}
+
+/// Compare two directories recursively and return a breakdown of differences
+fn dir_diff(a: &Path, b: &Path) -> Result<DirDiffDetail> {
     let a_entries = list_files_recursive(a)?;
     let b_entries = list_files_recursive(b)?;
 
-    // Check if file sets differ
     let a_relative: std::collections::HashSet<_> = a_entries
         .iter()
         .filter_map(|p| p.strip_prefix(a).ok())
@@ -74,20 +99,29 @@ fn dir_has_changes(a: &Path, b: &Path) -> Result<bool> {
         .map(|p| p.to_path_buf())
         .collect();
 
-    if a_relative != b_relative {
-        return Ok(true);
-    }
+    let mut local_only_files: Vec<_> = a_relative.difference(&b_relative).cloned().collect();
+    let mut repo_only_files: Vec<_> = b_relative.difference(&a_relative).cloned().collect();
+    local_only_files.sort();
+    repo_only_files.sort();
 
-    // Check content of matching files
-    for rel_path in &a_relative {
+    let mut changed_files = Vec::new();
+    for rel_path in a_relative.intersection(&b_relative) {
         let a_file = a.join(rel_path);
         let b_file = b.join(rel_path);
         if file_hash(&a_file)? != file_hash(&b_file)? {
-            return Ok(true);
+            changed_files.push(rel_path.clone());
         }
     }
+    changed_files.sort();
 
-    Ok(false)
+    Ok(DirDiffDetail {
+        local_only: local_only_files.len(),
+        repo_only: repo_only_files.len(),
+        content_changed: changed_files.len(),
+        local_only_files,
+        repo_only_files,
+        changed_files,
+    })
 }
 
 /// List all files in a directory recursively
@@ -157,21 +191,23 @@ pub fn diff_summary(
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
 
-        let status = if !source.exists() && !repo_path.exists() {
-            ChangeStatus::Missing
+        let (status, detail) = if !source.exists() && !repo_path.exists() {
+            (ChangeStatus::Missing, None)
         } else if !source.exists() {
-            ChangeStatus::RepoOnly
+            (ChangeStatus::RepoOnly, None)
         } else if !repo_path.exists() {
-            ChangeStatus::SystemOnly
+            (ChangeStatus::SystemOnly, None)
         } else if has_changes(&source, &repo_path)? {
-            ChangeStatus::Modified
+            let detail = dir_diff_detail(&source, &repo_path)?;
+            (ChangeStatus::Modified, detail)
         } else {
-            ChangeStatus::Synced
+            (ChangeStatus::Synced, None)
         };
 
         changes.push(ChangedEntry {
             entry: entry.clone(),
             status,
+            detail,
         });
     }
 
@@ -182,6 +218,7 @@ pub fn diff_summary(
 pub struct ChangedEntry {
     pub entry: crate::config::Entry,
     pub status: ChangeStatus,
+    pub detail: Option<DirDiffDetail>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
