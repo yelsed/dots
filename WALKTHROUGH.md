@@ -30,10 +30,11 @@ This creates `~/dotfiles/`, initializes a git repo, scaffolds platform directori
 **Clone an existing repo:**
 
 ```bash
-dots init git@github.com:you/dotfiles.git
+dots init git@github.com:you/dotfiles.git        # SSH — recommended
+dots init https://github.com/you/dotfiles.git   # HTTPS — requires GIT_USERNAME/GIT_PASSWORD env vars
 ```
 
-Clones the repo to `~/dotfiles/` and links all configs that match your current platform.
+Clones the repo to `~/dotfiles/` and links all configs that match your current platform. SSH is recommended — it uses your local key or SSH agent with no extra setup. HTTPS requires a GitHub Personal Access Token set via env vars (see [Git authentication](#git-authentication)).
 
 **Custom path:**
 
@@ -218,10 +219,16 @@ Uses SHA256 hashing to compare files. For directories, it recursively compares a
 
 ### Git authentication
 
-Tries these in order:
-1. SSH keys (`~/.ssh/id_ed25519`, `~/.ssh/id_rsa`)
-2. SSH agent
-3. Environment variables (`GIT_USERNAME` / `GIT_PASSWORD`)
+**SSH URLs** (`git@github.com:you/dotfiles.git`) — recommended. Tries in order:
+1. SSH agent (keys already loaded)
+2. `~/.ssh/id_ed25519`
+3. `~/.ssh/id_rsa`
+
+**HTTPS URLs** (`https://github.com/you/dotfiles.git`) — requires env vars:
+```bash
+GIT_USERNAME=you GIT_PASSWORD=<github-PAT> dots init https://github.com/you/dotfiles.git
+```
+GitHub no longer accepts account passwords over HTTPS; use a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope.
 
 ### Environment variables
 

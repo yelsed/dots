@@ -35,9 +35,12 @@ cargo install --git https://github.com/yelsed/dots.git
 Clone an existing dotfiles repo or create a new one:
 
 ```sh
-dots init                          # Create ~/dotfiles from scratch
-dots init https://github.com/you/dotfiles.git  # Clone existing repo
+dots init                                        # Create ~/dotfiles from scratch
+dots init git@github.com:you/dotfiles.git        # Clone existing repo (SSH — recommended)
+dots init https://github.com/you/dotfiles.git   # Clone existing repo (HTTPS — requires GIT_USERNAME/GIT_PASSWORD)
 ```
+
+> **SSH vs HTTPS:** SSH is recommended. HTTPS clones require `GIT_USERNAME` and `GIT_PASSWORD` env vars (use a GitHub Personal Access Token as the password). SSH uses your local key (`~/.ssh/id_ed25519` or `~/.ssh/id_rsa`) or SSH agent automatically.
 
 ### Track files
 
@@ -108,8 +111,8 @@ platforms = ["linux", "macos"]
 | Variable | Purpose |
 |---|---|
 | `DOTS_REPO` | Override default repo path (`~/dotfiles`) |
-| `GIT_USERNAME` | Git credential fallback (username) |
-| `GIT_PASSWORD` | Git credential fallback (password/token) |
+| `GIT_USERNAME` | HTTPS auth username (not needed for SSH) |
+| `GIT_PASSWORD` | HTTPS auth password/token (use a GitHub PAT, not your account password) |
 
 ## Development
 
