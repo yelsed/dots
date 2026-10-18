@@ -5,6 +5,12 @@ A cross-platform dotfile sync tool. Track your config files in a git repo and ke
 ## Installation
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/yelsed/dots/master/install.sh | sh
+```
+
+Or from a clone of this repository:
+
+```bash
 cargo install --path .
 ```
 
@@ -90,6 +96,14 @@ dots push
 ```
 
 This copies all modified files from your system into the repo, commits, and pushes to the remote. An auto-generated commit message lists which files changed.
+
+Push only adds and overwrites files. A file you deleted locally stays in the repo until you remove it there with git. Push also does not pull first: when another machine pushed in the meantime, your commit stays local and the push fails. Run `git -C ~/dotfiles pull --ff-only`, then `git -C ~/dotfiles push`.
+
+Check what would go along first:
+
+```bash
+dots status -v
+```
 
 Custom commit message:
 
@@ -186,18 +200,26 @@ remote = "origin"
 [watch]
 debounce_secs = 3
 
-[[entry]]
-source = "~/.config/nvim"
-repo_path = "shared/nvim"
-platforms = ["linux", "macos"]
+[entries.shared]
+"~/.claude/settings.json" = "shared/.claude/settings.json"
 
-[[entry]]
-source = "~/.bashrc"
-repo_path = "shared/shell/.bashrc"
-platforms = ["linux", "macos"]
+[entries.linux]
+"~/.config/nvim" = "shared/nvim"
+"~/.bashrc" = "shared/shell/.bashrc"
+
+[entries.macos]
+"~/.config/nvim" = "shared/nvim"
+"~/.bashrc" = "shared/shell/.bashrc"
+
+[entries.windows]
+
+[rsync]
+source = ""
+host = ""
+dest = ""
 ```
 
-Each entry maps a `source` (system path) to a `repo_path` (location in the repo) with a `platforms` filter.
+Each line maps a system path to a location in the repo. The section says which platforms it applies to: `shared` means every platform, and listing the same path under `linux` and `macos` shares it between those two. The older `[[entry]]` format with a `platforms` list is migrated to this layout automatically.
 
 ### Repo structure
 
@@ -240,9 +262,13 @@ GitHub no longer accepts account passwords over HTTPS; use a [Personal Access To
 dots init [REMOTE] [--path PATH]    Set up or clone a dotfiles repo
 dots add PATH [-P PLATFORMS]        Track a file or directory
 dots scan [--target AGENT] [-P]     Bulk-add AI agent configs
-dots status                         Show sync state of all entries
+dots status [-v] [--no-fetch]       Show sync state of all entries
 dots push [-m MESSAGE]              Commit and push local changes
 dots pull                           Fetch and apply remote changes
 dots link [--force]                 Copy repo configs to system
 dots watch [--poll-interval MIN]    Auto-sync in the background
+dots rsync [PATH] [--host] [--dest] [--dry-run]
+                                    Rsync a folder to another machine over SSH
+dots config                         Open dots.toml in your editor
+dots update [--check]               Update dots to the latest release
 ```

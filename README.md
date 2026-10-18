@@ -57,8 +57,27 @@ Push local changes to the repo, or pull remote changes to your system:
 
 ```sh
 dots push                  # Copy tracked changes to repo, commit, push
+dots push -m "message"     # Same, with your own commit message
 dots pull                  # Pull remote changes, interactively apply
 ```
+
+A typical round trip between two machines:
+
+```sh
+# machine A, after editing configs
+dots status -v             # see exactly which files changed
+dots push
+
+# machine B
+dots pull                  # pick which changed entries to apply
+```
+
+How push and pull behave:
+
+- `dots push` only adds and overwrites. A file that exists in the repo but no longer on this machine stays in the repo. Remove it from the repo with git if it should go.
+- `dots push` does not pull first. When the remote has commits you do not have, the commit is made locally and the push fails. Run `git -C ~/dotfiles pull --ff-only` (or `dots pull`) and push again with `git -C ~/dotfiles push`.
+- `dots pull` only fast-forwards. If the repo has local commits the remote does not have, resolve it with git by hand.
+- `dots pull` is interactive, so run it in a real terminal.
 
 ### Watch
 
@@ -74,7 +93,38 @@ dots watch --poll-interval 15   # Poll every 15 minutes
 See what's changed across all tracked entries:
 
 ```sh
-dots status
+dots status                # One line per tracked entry, plus remote state
+dots status -v             # Also list the individual files that differ inside directories
+dots status --no-fetch     # Skip contacting the remote
+```
+
+In the verbose list, `~` is a changed file, `+` a file only on this machine and `-` a file only in the repo.
+
+### Scan for AI agent configs
+
+```sh
+dots scan                  # Find Claude, Copilot, Codex, Gemini and Continue configs and pick which to track
+dots scan --target claude
+```
+
+Scanned configs can contain login tokens (for example `~/.config/github-copilot/auth.db`). Keep the dotfiles repo private, or leave those entries out.
+
+### Rsync a folder
+
+Send a folder that is too big or too private for git straight to another machine over SSH:
+
+```sh
+dots rsync                                     # Uses the [rsync] block in dots.toml
+dots rsync ~/folder --host user@host --dest /path/on/remote
+dots rsync --dry-run
+```
+
+### Edit the config and update dots
+
+```sh
+dots config                # Open dots.toml in your editor
+dots update                # Install the latest release
+dots update --check        # Only check for a newer release
 ```
 
 ### Link
@@ -88,23 +138,33 @@ dots link --force          # Overwrite existing files
 
 ## Configuration
 
-Configuration lives at `~/dotfiles/dots.toml` (override with `DOTS_REPO` env var).
+Configuration lives at `~/dotfiles/dots.toml` (override the repo location with the `DOTS_REPO` env var). Entries are grouped by platform, each line maps a system path to a path in the repo:
 
 ```toml
 [repo]
-path = "~/dotfiles"
-remote = "git@github.com:you/dotfiles.git"
+remote = "origin"          # git remote name, not a URL
 
-[[entries]]
-source = "~/.bashrc"
-repo_path = "bashrc"
-platforms = ["linux", "macos"]
+[watch]
+debounce_secs = 3
 
-[[entries]]
-source = "~/.config/nvim"
-repo_path = "nvim"
-platforms = ["linux", "macos"]
+[entries.shared]           # every platform
+"~/.config/nvim" = "shared/nvim"
+
+[entries.macos]            # macOS only
+"~/.zshrc" = "shared/.zshrc"
+
+[entries.linux]            # Linux only
+"~/.config/hypr/bindings.conf" = "linux/hypr/bindings.conf"
+
+[entries.windows]
+
+[rsync]
+source = "~/folder-to-send"
+host = "user@192.168.1.100"
+dest = "/home/user/backup-folder"
 ```
+
+The same source path may appear under both `linux` and `macos` to share it between those two without Windows. A `dots.toml` in the older `[[entry]]` format is converted to this format automatically the first time it is loaded.
 
 ### Environment variables
 
