@@ -20,13 +20,17 @@ No test suite exists yet. No linter or formatter configuration beyond default `c
 
 The CLI (`main.rs`) uses clap derive macros to dispatch to subcommands in `src/commands/`:
 
-- `init` — clone or create a dotfiles repo at `~/dotfiles`, scaffold platform dirs, generate `dots.toml`
-- `add` — interactively track a file/directory (copies to repo, adds config entry)
-- `push` — copy tracked files system→repo, git commit+push
-- `pull` — git pull, interactively select entries to apply repo→system
-- `watch` — background daemon with debounced file watching + periodic remote polling
-- `status` — display sync state of all tracked entries
-- `link` — symlink/copy files from repo to system locations
+- `init`: clone or create a dotfiles repo at `~/dotfiles`, scaffold platform dirs, generate `dots.toml`
+- `add`: interactively track a file/directory (copies to repo, adds config entry)
+- `push`: copy tracked files system→repo, git commit+push
+- `pull`: git pull, interactively select entries to apply repo→system
+- `watch`: background daemon with debounced file watching + periodic remote polling
+- `status`: display sync state of all tracked entries
+- `link`: copy files from repo to system locations (copies, never symlinks)
+- `scan`: find known AI agent config locations and bulk-add them
+- `rsync`: rsync a folder to a remote host over SSH, using the `[rsync]` block in `dots.toml`
+- `update`: self-update from GitHub Releases
+- `config`: open `dots.toml` in the editor
 
 Core modules:
 
@@ -43,6 +47,7 @@ Core modules:
 - All fallible functions return `anyhow::Result<T>` with `.context()` for error messages
 - Paths use tilde expansion/contraction (`~` ↔ `$HOME`) throughout config and display
 - Config lives at `${DOTS_REPO:-$HOME/dotfiles}/dots.toml`
-- Each tracked entry maps a `source` (system path) to a `repo_path` with a `platforms` filter
+- `dots.toml` groups entries as `[entries.shared|linux|macos|windows]` maps of system path to repo path; `config.rs` flattens them into `Entry` values with a `platforms` list. The old `[[entry]]` format is auto-migrated on load
+- `push` is additive: `copy_entry` never deletes repo files that are missing locally, and push does not fetch first
 - Git auth tries: SSH keys (ed25519, rsa) → SSH agent → env vars (`GIT_USERNAME`/`GIT_PASSWORD`)
 - Pulls are fast-forward-only for safety
