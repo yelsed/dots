@@ -14,7 +14,7 @@ cargo build --release        # Release build
 cargo run -- <subcommand>    # Run via cargo (e.g., cargo run -- status)
 ```
 
-No test suite exists yet. No linter or formatter configuration beyond default `cargo fmt` / `cargo clippy`.
+`cargo test` runs the unit tests (in `src/sync.rs`). No linter or formatter configuration beyond default `cargo fmt` / `cargo clippy`.
 
 ## Architecture
 
@@ -48,6 +48,8 @@ Core modules:
 - Paths use tilde expansion/contraction (`~` ↔ `$HOME`) throughout config and display
 - Config lives at `${DOTS_REPO:-$HOME/dotfiles}/dots.toml`
 - `dots.toml` groups entries as `[entries.shared|linux|macos|windows]` maps of system path to repo path; `config.rs` flattens them into `Entry` values with a `platforms` list. The old `[[entry]]` format is auto-migrated on load
-- `push` is additive: `copy_entry` never deletes repo files that are missing locally, and push does not fetch first
+- `copy_entry` mirrors folder entries in both directions: it removes destination files and links the source no longer has, except names in `[watch] ignore` and machine-local links. Push does not fetch first
+- Inside folder entries, symbolic links are recreated with the same target (`symlink_metadata`, never followed); a link to an absolute path outside `$HOME` is machine-local and skipped on both sides
+- The watcher ignores access (read) events, since its own hashing would otherwise retrigger syncs. On new remote commits it notifies, or with `[watch] auto_apply` pulls and copies the changed folders to the system. It pulls only when the repository is clean, every changed path is under an auto-apply entry and none of those entries has unpushed local changes; otherwise it notifies
 - Git auth tries: SSH keys (ed25519, rsa) → SSH agent → env vars (`GIT_USERNAME`/`GIT_PASSWORD`)
 - Pulls are fast-forward-only for safety
