@@ -13,6 +13,15 @@ pub fn copy_entry(src: &Path, dst: &Path, ignore: &[String]) -> Result<()> {
         copy_dir_recursive(src, dst, ignore).with_context(|| {
             format!("Failed to copy dir {} -> {}", src.display(), dst.display())
         })?;
+        // Through a linked root, deleting would reach into whatever the link points at
+        if is_link(src) || is_link(dst) {
+            eprintln!(
+                "Warning: not removing stale files, {} or {} is a link",
+                src.display(),
+                dst.display()
+            );
+            return Ok(());
+        }
         remove_stale(src, dst, ignore)
             .with_context(|| format!("Failed to remove stale files in {}", dst.display()))
     } else if src.is_file() {
@@ -34,9 +43,14 @@ enum Kind {
     Link(PathBuf),
 }
 
+fn is_link(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
 /// Classify a child of a folder entry, or `None` when it must be left alone:
-/// ignored names, `.git`, and links that point to an absolute path outside
-/// `$HOME` (those belong to the machine, such as Omarchy package skills).
+/// ignored names, `.git`, special files, and links that point to an absolute
+/// path outside `$HOME` (those belong to the machine, such as Omarchy package
+/// skills). A name left alone on either side is left alone on both.
 fn classify(path: &Path, ignore: &[String]) -> Result<Option<Kind>> {
     let name = path
         .file_name()
@@ -45,15 +59,28 @@ fn classify(path: &Path, ignore: &[String]) -> Result<Option<Kind>> {
     if name == ".git" || ignore.iter().any(|ignored| *ignored == name) {
         return Ok(None);
     }
-    let meta = fs::symlink_metadata(path)?;
-    if meta.file_type().is_symlink() {
+    let file_type = fs::symlink_metadata(path)?.file_type();
+    if file_type.is_symlink() {
+        if cfg!(not(unix)) {
+            eprintln!(
+                "Warning: skipping link {} (links are not supported on this platform)",
+                path.display()
+            );
+            return Ok(None);
+        }
         let target = fs::read_link(path)?;
         if is_machine_local_link(&target) {
             return Ok(None);
         }
         return Ok(Some(Kind::Link(target)));
     }
-    Ok(Some(if meta.is_dir() { Kind::Dir } else { Kind::File }))
+    Ok(if file_type.is_dir() {
+        Some(Kind::Dir)
+    } else if file_type.is_file() {
+        Some(Kind::File)
+    } else {
+        None
+    })
 }
 
 fn is_machine_local_link(target: &Path) -> bool {
@@ -80,12 +107,8 @@ fn create_link(target: &Path, link: &Path) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn create_link(_target: &Path, link: &Path) -> Result<()> {
-    eprintln!(
-        "Warning: skipping link {} (links are not supported on this platform)",
-        link.display()
-    );
-    Ok(())
+fn create_link(_target: &Path, _link: &Path) -> Result<()> {
+    unreachable!("classify never returns a link outside unix")
 }
 
 /// Recursively copy a directory
@@ -96,6 +119,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path, ignore: &[String]) -> Result<()> {
         let src_path = entry?.path();
         let dst_path = dst.join(src_path.file_name().unwrap_or_default());
         let existing = fs::symlink_metadata(&dst_path).ok();
+        if existing.is_some() && classify(&dst_path, ignore)?.is_none() {
+            continue;
+        }
 
         match classify(&src_path, ignore)? {
             None => {}
@@ -134,20 +160,21 @@ fn remove_stale(src: &Path, dst: &Path, ignore: &[String]) -> Result<()> {
         let Some(kind) = classify(&dst_path, ignore)? else {
             continue;
         };
-        let source_kind = if fs::symlink_metadata(&src_path).is_ok() {
-            classify(&src_path, ignore)?
-        } else {
-            None
-        };
-        match (kind, source_kind) {
-            (Kind::Dir, Some(Kind::Dir)) => remove_stale(&src_path, &dst_path, ignore)?,
-            (_, Some(_)) => {}
-            (Kind::Dir, None) => {
+        if fs::symlink_metadata(&src_path).is_ok() {
+            // Still in the source: only descend into real folders on both sides,
+            // never through a source link that classify told us to leave alone
+            if let (Kind::Dir, Some(Kind::Dir)) = (kind, classify(&src_path, ignore)?) {
+                remove_stale(&src_path, &dst_path, ignore)?;
+            }
+            continue;
+        }
+        match kind {
+            Kind::Dir => {
                 // Keep the folder if it still holds ignored names or machine-local links
                 remove_stale(&src_path, &dst_path, ignore)?;
                 let _ = fs::remove_dir(&dst_path);
             }
-            (_, None) => fs::remove_file(&dst_path)?,
+            _ => fs::remove_file(&dst_path)?,
         }
     }
     Ok(())
@@ -194,19 +221,31 @@ impl DirDiffDetail {
 
 /// Compare two directories recursively and return a breakdown of differences
 fn dir_diff(a: &Path, b: &Path, ignore: &[String]) -> Result<DirDiffDetail> {
-    let a_entries = list_files_recursive(a, ignore)?;
-    let b_entries = list_files_recursive(b, ignore)?;
+    let mut a_left_alone = Vec::new();
+    let mut b_left_alone = Vec::new();
+    let a_entries = collect_entries(a, ignore, &mut a_left_alone)?;
+    let b_entries = collect_entries(b, ignore, &mut b_left_alone)?;
 
-    let a_relative: std::collections::HashSet<_> = a_entries
+    let left_alone: Vec<PathBuf> = a_left_alone
         .iter()
-        .filter_map(|p| p.strip_prefix(a).ok())
-        .map(|p| p.to_path_buf())
+        .filter_map(|path| path.strip_prefix(a).ok())
+        .chain(
+            b_left_alone
+                .iter()
+                .filter_map(|path| path.strip_prefix(b).ok()),
+        )
+        .map(Path::to_path_buf)
         .collect();
-    let b_relative: std::collections::HashSet<_> = b_entries
-        .iter()
-        .filter_map(|p| p.strip_prefix(b).ok())
-        .map(|p| p.to_path_buf())
-        .collect();
+    let relative = |entries: &[PathBuf], root: &Path| -> std::collections::HashSet<PathBuf> {
+        entries
+            .iter()
+            .filter_map(|path| path.strip_prefix(root).ok())
+            .filter(|path| !left_alone.iter().any(|skipped| path.starts_with(skipped)))
+            .map(Path::to_path_buf)
+            .collect()
+    };
+    let a_relative = relative(&a_entries, a);
+    let b_relative = relative(&b_entries, b);
 
     let mut local_only_files: Vec<_> = a_relative.difference(&b_relative).cloned().collect();
     let mut repo_only_files: Vec<_> = b_relative.difference(&a_relative).cloned().collect();
@@ -242,6 +281,15 @@ fn entry_fingerprint(path: &Path) -> Result<String> {
 
 /// List all files and links in a directory recursively, without following links
 fn list_files_recursive(dir: &Path, ignore: &[String]) -> Result<Vec<PathBuf>> {
+    collect_entries(dir, ignore, &mut Vec::new())
+}
+
+/// Like `list_files_recursive`, also recording the paths `classify` leaves alone
+fn collect_entries(
+    dir: &Path,
+    ignore: &[String],
+    left_alone: &mut Vec<PathBuf>,
+) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     if !dir.exists() {
         return Ok(files);
@@ -249,8 +297,8 @@ fn list_files_recursive(dir: &Path, ignore: &[String]) -> Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         match classify(&path, ignore)? {
-            None => {}
-            Some(Kind::Dir) => files.extend(list_files_recursive(&path, ignore)?),
+            None => left_alone.push(path),
+            Some(Kind::Dir) => files.extend(collect_entries(&path, ignore, left_alone)?),
             Some(_) => files.push(path),
         }
     }
@@ -398,6 +446,29 @@ mod tests {
         assert!(fs::symlink_metadata(&copied_link).is_err());
         assert!(fs::symlink_metadata(destination.join("machine-link")).is_ok());
         assert!(destination.join(".trash").exists());
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn machine_local_link_on_one_side_is_left_alone_on_both() {
+        let root = std::env::temp_dir().join(format!("dots-sync-local-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let repo = root.join("repo");
+        let system = root.join("system");
+        fs::create_dir_all(repo.join("package-skill")).unwrap();
+        fs::write(repo.join("package-skill/SKILL.md"), "from another machine").unwrap();
+        fs::create_dir_all(&system).unwrap();
+        symlink("/nonexistent-dots-target", system.join("package-skill")).unwrap();
+
+        assert!(!has_changes(&system, &repo, &[]).unwrap());
+        copy_entry(&repo, &system, &[]).unwrap();
+        assert!(fs::symlink_metadata(system.join("package-skill"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        copy_entry(&system, &repo, &[]).unwrap();
+        assert!(repo.join("package-skill/SKILL.md").exists());
 
         fs::remove_dir_all(&root).unwrap();
     }

@@ -103,6 +103,13 @@ pub fn fetch_and_check(repo: &Repository, remote_name: &str) -> Result<RemoteSta
     }
 }
 
+/// Whether the working tree has uncommitted or untracked changes
+pub fn has_uncommitted_changes(repo: &Repository) -> Result<bool> {
+    let mut options = git2::StatusOptions::new();
+    options.include_untracked(true).include_ignored(false);
+    Ok(!repo.statuses(Some(&mut options))?.is_empty())
+}
+
 /// Pull (fast-forward) from remote
 pub fn pull(repo: &Repository, remote_name: &str) -> Result<()> {
     let mut remote = repo.find_remote(remote_name)?;

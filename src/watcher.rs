@@ -57,6 +57,18 @@ pub fn run_watcher(
     let mut last_sync = Instant::now();
     let mut last_poll = Instant::now();
     let mut pending_change = false;
+    // Entries pulled but not applied to the system: pushing them would revert the remote
+    let mut unapplied: Vec<PathBuf> = Vec::new();
+
+    for path in &config.watch.auto_apply {
+        let expanded = crate::config::expand_tilde(path);
+        if !entries
+            .iter()
+            .any(|entry| entry.expanded_source() == expanded)
+        {
+            eprintln!("Warning: auto_apply {} matches no tracked entry", path);
+        }
+    }
 
     loop {
         match rx.recv_timeout(Duration::from_secs(1)) {
@@ -73,7 +85,7 @@ pub fn run_watcher(
         // Debounce: if we have pending changes and enough time has passed
         if pending_change && last_sync.elapsed() >= debounce {
             pending_change = false;
-            if let Err(e) = sync_and_push(config, repo_root, &entries) {
+            if let Err(e) = sync_and_push(config, repo_root, &entries, &mut unapplied) {
                 eprintln!("Sync error: {}", e);
             }
         }
@@ -81,8 +93,9 @@ pub fn run_watcher(
         // Remote poll
         if last_poll.elapsed() >= poll_interval {
             last_poll = Instant::now();
-            if let Err(e) = check_remote(config, repo_root, &entries) {
-                eprintln!("Remote check error: {}", e);
+            match check_remote(config, repo_root, &entries) {
+                Ok(failed) => unapplied.extend(failed),
+                Err(e) => eprintln!("Remote check error: {}", e),
             }
         }
     }
@@ -91,14 +104,31 @@ pub fn run_watcher(
 }
 
 /// Copy changed files to repo, commit, and push
-fn sync_and_push(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<()> {
+fn sync_and_push(
+    config: &DotsConfig,
+    repo_root: &Path,
+    entries: &[Entry],
+    unapplied: &mut Vec<PathBuf>,
+) -> Result<()> {
     let mut changed_files = Vec::new();
+    let ignore = &config.watch.ignore;
+
+    unapplied.retain(|source| {
+        entries
+            .iter()
+            .find(|entry| entry.expanded_source() == *source)
+            .is_some_and(|entry| {
+                sync::has_changes(source, &entry.full_repo_path(repo_root), ignore).unwrap_or(true)
+            })
+    });
 
     for entry in entries {
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
 
-        let ignore = &config.watch.ignore;
+        if unapplied.contains(&source) {
+            continue;
+        }
         if source.exists() && sync::has_changes(&source, &repo_path, ignore).unwrap_or(true) {
             sync::copy_entry(&source, &repo_path, ignore)?;
             changed_files.push(entry.repo_path.clone());
@@ -128,25 +158,31 @@ fn sync_and_push(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Re
     Ok(())
 }
 
-/// Check if the remote has new commits. Without `auto_apply` only notify;
-/// with it, pull and copy the auto-apply entries to the system, skipping any
-/// entry that had local changes before the pull.
-fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<()> {
+/// Check if the remote has new commits. Without `auto_apply` only notify.
+/// With it, pull and copy the changed auto-apply entries to the system, but
+/// only when nothing local would be overwritten or pushed back over the
+/// remote: otherwise notify and leave it to `dots pull`.
+/// Returns the sources that were pulled but could not be applied.
+fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<Vec<PathBuf>> {
     let remote_name = &config.repo.remote;
     let ignore = &config.watch.ignore;
     let repo = git::open_repo(repo_root)?;
     let git::RemoteStatus::Behind(count) = git::fetch_and_check(&repo, remote_name)? else {
-        return Ok(());
+        return Ok(Vec::new());
+    };
+    let ask_for_manual_pull = |reason: &str| {
+        let body = format!(
+            "{} dotfile change{} available, run `dots pull` to apply{}",
+            count,
+            if count == 1 { "" } else { "s" },
+            reason
+        );
+        send_notification("dots", &body);
+        Ok(Vec::new())
     };
 
     if config.watch.auto_apply.is_empty() {
-        let body = format!(
-            "{} dotfile change{} available, run `dots pull` to apply",
-            count,
-            if count == 1 { "" } else { "s" }
-        );
-        send_notification("dots", &body);
-        return Ok(());
+        return ask_for_manual_pull("");
     }
 
     let auto_apply: Vec<&Entry> = entries
@@ -159,27 +195,53 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
                 .any(|path| crate::config::expand_tilde(path) == entry.expanded_source())
         })
         .collect();
-
-    let auto_apply_repo_paths: Vec<&str> = auto_apply
-        .iter()
-        .map(|entry| entry.repo_path.as_str())
-        .collect();
-
-    // Decide before pulling: afterwards the repository no longer shows the local state
-    let mut clean = Vec::new();
-    let mut locally_changed = Vec::new();
-    for entry in auto_apply {
-        let source = entry.expanded_source();
-        let repo_path = entry.full_repo_path(repo_root);
-        if source.exists() && sync::has_changes(&source, &repo_path, ignore).unwrap_or(true) {
-            locally_changed.push(entry);
-        } else {
-            clean.push(entry);
-        }
+    if auto_apply.is_empty() {
+        return ask_for_manual_pull(" (no auto_apply path matches a tracked entry)");
+    }
+    if git::has_uncommitted_changes(&repo)? {
+        return ask_for_manual_pull(" (the dotfiles repository has uncommitted changes)");
     }
 
     let changed_files = git::changed_files(&repo, remote_name)?;
-    git::pull(&repo, remote_name)?;
+    let touched_by = |entry: &Entry| {
+        changed_files
+            .iter()
+            .any(|file| Path::new(file).starts_with(&entry.repo_path))
+    };
+    if !changed_files.iter().all(|file| {
+        auto_apply
+            .iter()
+            .any(|entry| Path::new(file).starts_with(&entry.repo_path))
+    }) {
+        return ask_for_manual_pull(" (some changes are outside auto_apply)");
+    }
+
+    // Decide before pulling: afterwards the repository no longer shows the local state
+    let to_apply: Vec<&Entry> = auto_apply
+        .into_iter()
+        .filter(|entry| touched_by(entry))
+        .collect();
+    let locally_changed: Vec<&str> = to_apply
+        .iter()
+        .filter(|entry| {
+            let source = entry.expanded_source();
+            source.exists()
+                && sync::has_changes(&source, &entry.full_repo_path(repo_root), ignore)
+                    .unwrap_or(true)
+        })
+        .map(|entry| entry.source.as_str())
+        .collect();
+    if !locally_changed.is_empty() {
+        return ask_for_manual_pull(&format!(
+            " ({} also changed here and is not pushed yet)",
+            locally_changed.join(", ")
+        ));
+    }
+
+    if let Err(error) = git::pull(&repo, remote_name) {
+        send_notification("dots", &format!("Pull failed: {}", error));
+        return Err(error);
+    }
     println!(
         "Pulled {} commit{} from {}",
         count,
@@ -187,44 +249,31 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
         remote_name
     );
 
-    for entry in clean {
+    let mut failed = Vec::new();
+    for entry in to_apply {
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
-        if repo_path.exists() && sync::has_changes(&repo_path, &source, ignore)? {
-            sync::copy_entry(&repo_path, &source, ignore)?;
-            send_notification("dots", &format!("Applied {}", entry.source));
+        let result = if repo_path.exists() {
+            sync::copy_entry(&repo_path, &source, ignore)
+        } else {
+            Ok(())
+        };
+        match result {
+            Ok(()) => send_notification("dots", &format!("Applied {}", entry.source)),
+            Err(error) => {
+                send_notification(
+                    "dots",
+                    &format!(
+                        "Could not apply {}, run `dots link`: {:#}",
+                        entry.source, error
+                    ),
+                );
+                failed.push(source);
+            }
         }
     }
-    for entry in &locally_changed {
-        send_notification(
-            "dots",
-            &format!(
-                "Skipped {}: it has local changes that are not pushed yet",
-                entry.source
-            ),
-        );
-    }
 
-    let other_changes = changed_files
-        .iter()
-        .filter(|file| {
-            !auto_apply_repo_paths
-                .iter()
-                .any(|repo_path| Path::new(file).starts_with(repo_path))
-        })
-        .count();
-    if other_changes > 0 {
-        send_notification(
-            "dots",
-            &format!(
-                "{} other file{} pulled, run `dots link` to apply",
-                other_changes,
-                if other_changes == 1 { "" } else { "s" }
-            ),
-        );
-    }
-
-    Ok(())
+    Ok(failed)
 }
 
 /// Send a desktop notification
