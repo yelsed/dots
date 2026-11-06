@@ -72,7 +72,7 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
 
     // Copy to repo
     let full_repo_path = repo_root.join(&repo_path);
-    sync::copy_entry(&source_path, &full_repo_path)?;
+    sync::copy_entry(&source_path, &full_repo_path, &config.watch.ignore)?;
     println!("  {} Copied to repo", "->".green());
 
     // Add entry to config

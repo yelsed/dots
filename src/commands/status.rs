@@ -17,7 +17,7 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
     println!();
 
     let all = config.all_entries();
-    let changes = sync::diff_summary(&all, &repo_root)?;
+    let changes = sync::diff_summary(&all, &repo_root, &config.watch.ignore)?;
 
     let relevant = config.platform_entries();
     let relevant_paths: Vec<_> = relevant.iter().map(|e| e.repo_path.as_str()).collect();
@@ -61,10 +61,12 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
         let time_str = {
             let source = change.entry.expanded_source();
             match change.status {
-                ChangeStatus::Modified | ChangeStatus::SystemOnly => sync::last_modified(&source)
-                    .ok()
-                    .flatten()
-                    .map(relative_time),
+                ChangeStatus::Modified | ChangeStatus::SystemOnly => {
+                    sync::last_modified(&source, &config.watch.ignore)
+                        .ok()
+                        .flatten()
+                        .map(relative_time)
+                }
                 ChangeStatus::RepoOnly => repo
                     .as_ref()
                     .and_then(|r| {
@@ -74,10 +76,13 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
                     })
                     .map(relative_time_from_unix)
                     .or_else(|| {
-                        sync::last_modified(&change.entry.full_repo_path(&repo_root))
-                            .ok()
-                            .flatten()
-                            .map(relative_time)
+                        sync::last_modified(
+                            &change.entry.full_repo_path(&repo_root),
+                            &config.watch.ignore,
+                        )
+                        .ok()
+                        .flatten()
+                        .map(relative_time)
                     }),
                 ChangeStatus::Synced => repo
                     .as_ref()
@@ -88,7 +93,7 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
                     })
                     .map(relative_time_from_unix)
                     .or_else(|| {
-                        sync::last_modified(&source)
+                        sync::last_modified(&source, &config.watch.ignore)
                             .ok()
                             .flatten()
                             .map(relative_time)

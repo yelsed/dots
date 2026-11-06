@@ -132,7 +132,7 @@ pub fn run() -> Result<()> {
         let source = entry.expanded_source();
 
         if repo_path.exists() {
-            sync::copy_entry(&repo_path, &source)?;
+            sync::copy_entry(&repo_path, &source, &config.watch.ignore)?;
             println!("  {} {}", "applied".green(), entry.source);
             applied += 1;
         }

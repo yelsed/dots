@@ -142,8 +142,12 @@ pub fn run(target: Option<String>, platforms_arg: Option<String>) -> Result<()> 
         let repo_path = determine_repo_path(&candidate.source_path, &platforms)?;
         let full_repo_path = repo_root.join(&repo_path);
 
-        sync::copy_entry(&candidate.source_path, &full_repo_path)
-            .with_context(|| format!("Failed to copy {}", candidate.source_display))?;
+        sync::copy_entry(
+            &candidate.source_path,
+            &full_repo_path,
+            &config.watch.ignore,
+        )
+        .with_context(|| format!("Failed to copy {}", candidate.source_display))?;
 
         config.add_entry(&candidate.source_display, &repo_path, &platforms);
 

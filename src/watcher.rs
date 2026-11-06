@@ -1,6 +1,6 @@
 use anyhow::Result;
-use notify::{Event, RecursiveMode, Watcher};
-use std::path::PathBuf;
+use notify::{Event, EventKind, RecursiveMode, Watcher};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -60,6 +60,8 @@ pub fn run_watcher(
 
     loop {
         match rx.recv_timeout(Duration::from_secs(1)) {
+            // Reading files (including our own hashing) raises access events; only writes count
+            Ok(event) if matches!(event.kind, EventKind::Access(_)) => {}
             Ok(_event) => {
                 pending_change = true;
                 last_sync = Instant::now();
@@ -79,7 +81,7 @@ pub fn run_watcher(
         // Remote poll
         if last_poll.elapsed() >= poll_interval {
             last_poll = Instant::now();
-            if let Err(e) = check_remote(repo_root, &config.repo.remote) {
+            if let Err(e) = check_remote(config, repo_root, &entries) {
                 eprintln!("Remote check error: {}", e);
             }
         }
@@ -89,15 +91,16 @@ pub fn run_watcher(
 }
 
 /// Copy changed files to repo, commit, and push
-fn sync_and_push(config: &DotsConfig, repo_root: &PathBuf, entries: &[Entry]) -> Result<()> {
+fn sync_and_push(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<()> {
     let mut changed_files = Vec::new();
 
     for entry in entries {
         let source = entry.expanded_source();
         let repo_path = entry.full_repo_path(repo_root);
 
-        if source.exists() && sync::has_changes(&source, &repo_path).unwrap_or(true) {
-            sync::copy_entry(&source, &repo_path)?;
+        let ignore = &config.watch.ignore;
+        if source.exists() && sync::has_changes(&source, &repo_path, ignore).unwrap_or(true) {
+            sync::copy_entry(&source, &repo_path, ignore)?;
             changed_files.push(entry.repo_path.clone());
         }
     }
@@ -125,18 +128,100 @@ fn sync_and_push(config: &DotsConfig, repo_root: &PathBuf, entries: &[Entry]) ->
     Ok(())
 }
 
-/// Check if remote has new changes and notify
-fn check_remote(repo_root: &PathBuf, remote_name: &str) -> Result<()> {
+/// Check if the remote has new commits. Without `auto_apply` only notify;
+/// with it, pull and copy the auto-apply entries to the system, skipping any
+/// entry that had local changes before the pull.
+fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<()> {
+    let remote_name = &config.repo.remote;
+    let ignore = &config.watch.ignore;
     let repo = git::open_repo(repo_root)?;
-    let status = git::fetch_and_check(&repo, remote_name)?;
+    let git::RemoteStatus::Behind(count) = git::fetch_and_check(&repo, remote_name)? else {
+        return Ok(());
+    };
 
-    if let git::RemoteStatus::Behind(count) = status {
+    if config.watch.auto_apply.is_empty() {
         let body = format!(
-            "{} dotfile change{} available — run `dots pull` to apply",
+            "{} dotfile change{} available, run `dots pull` to apply",
             count,
             if count == 1 { "" } else { "s" }
         );
         send_notification("dots", &body);
+        return Ok(());
+    }
+
+    let auto_apply: Vec<&Entry> = entries
+        .iter()
+        .filter(|entry| {
+            config
+                .watch
+                .auto_apply
+                .iter()
+                .any(|path| crate::config::expand_tilde(path) == entry.expanded_source())
+        })
+        .collect();
+
+    let auto_apply_repo_paths: Vec<&str> = auto_apply
+        .iter()
+        .map(|entry| entry.repo_path.as_str())
+        .collect();
+
+    // Decide before pulling: afterwards the repository no longer shows the local state
+    let mut clean = Vec::new();
+    let mut locally_changed = Vec::new();
+    for entry in auto_apply {
+        let source = entry.expanded_source();
+        let repo_path = entry.full_repo_path(repo_root);
+        if source.exists() && sync::has_changes(&source, &repo_path, ignore).unwrap_or(true) {
+            locally_changed.push(entry);
+        } else {
+            clean.push(entry);
+        }
+    }
+
+    let changed_files = git::changed_files(&repo, remote_name)?;
+    git::pull(&repo, remote_name)?;
+    println!(
+        "Pulled {} commit{} from {}",
+        count,
+        if count == 1 { "" } else { "s" },
+        remote_name
+    );
+
+    for entry in clean {
+        let source = entry.expanded_source();
+        let repo_path = entry.full_repo_path(repo_root);
+        if repo_path.exists() && sync::has_changes(&repo_path, &source, ignore)? {
+            sync::copy_entry(&repo_path, &source, ignore)?;
+            send_notification("dots", &format!("Applied {}", entry.source));
+        }
+    }
+    for entry in &locally_changed {
+        send_notification(
+            "dots",
+            &format!(
+                "Skipped {}: it has local changes that are not pushed yet",
+                entry.source
+            ),
+        );
+    }
+
+    let other_changes = changed_files
+        .iter()
+        .filter(|file| {
+            !auto_apply_repo_paths
+                .iter()
+                .any(|repo_path| Path::new(file).starts_with(repo_path))
+        })
+        .count();
+    if other_changes > 0 {
+        send_notification(
+            "dots",
+            &format!(
+                "{} other file{} pulled, run `dots link` to apply",
+                other_changes,
+                if other_changes == 1 { "" } else { "s" }
+            ),
+        );
     }
 
     Ok(())

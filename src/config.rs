@@ -63,6 +63,12 @@ fn default_remote() -> String {
 pub struct WatchConfig {
     #[serde(default = "default_debounce")]
     pub debounce_secs: u64,
+    /// Names skipped anywhere inside a folder entry (copy, compare, status, watcher)
+    #[serde(default)]
+    pub ignore: Vec<String>,
+    /// Folder entries the watcher applies from the remote without `dots pull`
+    #[serde(default)]
+    pub auto_apply: Vec<String>,
 }
 
 fn default_debounce() -> u64 {
