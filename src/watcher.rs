@@ -10,7 +10,11 @@ use crate::platform;
 use crate::sync;
 
 /// Run the file watcher daemon
-pub fn run_watcher(config: &DotsConfig, repo_root: &PathBuf, poll_interval_mins: u64) -> Result<()> {
+pub fn run_watcher(
+    config: &DotsConfig,
+    repo_root: &PathBuf,
+    poll_interval_mins: u64,
+) -> Result<()> {
     let (tx, rx) = mpsc::channel::<Event>();
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {

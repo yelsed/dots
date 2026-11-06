@@ -28,7 +28,12 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
 
     for change in &changes {
         let is_relevant = relevant_paths.contains(&change.entry.repo_path.as_str());
-        let platforms: Vec<_> = change.entry.platforms.iter().map(|p| p.to_string()).collect();
+        let platforms: Vec<_> = change
+            .entry
+            .platforms
+            .iter()
+            .map(|p| p.to_string())
+            .collect();
         let platform_str = platforms.join(",");
 
         let status_str = match &change.status {
@@ -56,9 +61,10 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
         let time_str = {
             let source = change.entry.expanded_source();
             match change.status {
-                ChangeStatus::Modified | ChangeStatus::SystemOnly => {
-                    sync::last_modified(&source).ok().flatten().map(relative_time)
-                }
+                ChangeStatus::Modified | ChangeStatus::SystemOnly => sync::last_modified(&source)
+                    .ok()
+                    .flatten()
+                    .map(relative_time),
                 ChangeStatus::RepoOnly => repo
                     .as_ref()
                     .and_then(|r| {
@@ -81,7 +87,12 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
                             .flatten()
                     })
                     .map(relative_time_from_unix)
-                    .or_else(|| sync::last_modified(&source).ok().flatten().map(relative_time)),
+                    .or_else(|| {
+                        sync::last_modified(&source)
+                            .ok()
+                            .flatten()
+                            .map(relative_time)
+                    }),
                 ChangeStatus::Missing => None,
             }
         };
@@ -134,13 +145,25 @@ pub fn run(no_fetch: bool, verbose: bool) -> Result<()> {
                 );
                 if verbose {
                     for f in &detail.changed_files {
-                        println!("               {} {}", "~".yellow(), f.display().to_string().dimmed());
+                        println!(
+                            "               {} {}",
+                            "~".yellow(),
+                            f.display().to_string().dimmed()
+                        );
                     }
                     for f in &detail.local_only_files {
-                        println!("               {} {}", "+".blue(), f.display().to_string().dimmed());
+                        println!(
+                            "               {} {}",
+                            "+".blue(),
+                            f.display().to_string().dimmed()
+                        );
                     }
                     for f in &detail.repo_only_files {
-                        println!("               {} {}", "-".magenta(), f.display().to_string().dimmed());
+                        println!(
+                            "               {} {}",
+                            "-".magenta(),
+                            f.display().to_string().dimmed()
+                        );
                     }
                 }
             }
@@ -180,7 +203,10 @@ fn print_remote_status(config: &DotsConfig, repo: Option<&git2::Repository>, no_
     let repo = match repo {
         Some(r) => r,
         None => {
-            println!("Remote: {}", "unavailable (could not open repo)".dimmed().red());
+            println!(
+                "Remote: {}",
+                "unavailable (could not open repo)".dimmed().red()
+            );
             return;
         }
     };

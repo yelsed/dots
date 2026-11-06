@@ -40,7 +40,12 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
             .collect::<Vec<_>>()
     } else {
         // Interactive selection
-        let options = vec!["shared (linux + macos)", "linux only", "macos only", "all platforms"];
+        let options = vec![
+            "shared (linux + macos)",
+            "linux only",
+            "macos only",
+            "all platforms",
+        ];
         let selection = Select::new()
             .with_prompt("Which platforms?")
             .items(&options)

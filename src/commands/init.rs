@@ -36,7 +36,10 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
         }
         println!("{}", "Initialized new repo.".green());
     } else {
-        println!("Using existing repo at {}", repo_path.display().to_string().cyan());
+        println!(
+            "Using existing repo at {}",
+            repo_path.display().to_string().cyan()
+        );
     }
 
     // Create dots.toml if it doesn't exist
@@ -85,7 +88,11 @@ pub fn run(remote: Option<String>, path: Option<String>) -> Result<()> {
         }
     }
 
-    println!("\n{} Run {} to start auto-syncing.", "Done!".green().bold(), "dots watch".cyan());
+    println!(
+        "\n{} Run {} to start auto-syncing.",
+        "Done!".green().bold(),
+        "dots watch".cyan()
+    );
     Ok(())
 }
 
@@ -100,18 +107,32 @@ fn default_entries() -> EntriesConfig {
         ("~/.bashrc", "shared/shell/.bashrc"),
     ];
     for (source, repo_path) in &unix_defaults {
-        entries.linux.insert(source.to_string(), repo_path.to_string());
-        entries.macos.insert(source.to_string(), repo_path.to_string());
+        entries
+            .linux
+            .insert(source.to_string(), repo_path.to_string());
+        entries
+            .macos
+            .insert(source.to_string(), repo_path.to_string());
     }
 
     if current == Platform::Linux {
-        entries.linux.insert("~/.config/hypr/bindings.conf".to_string(), "linux/hypr/bindings.conf".to_string());
-        entries.linux.insert("~/.config/hypr/monitors.conf".to_string(), "linux/hypr/monitors.conf".to_string());
+        entries.linux.insert(
+            "~/.config/hypr/bindings.conf".to_string(),
+            "linux/hypr/bindings.conf".to_string(),
+        );
+        entries.linux.insert(
+            "~/.config/hypr/monitors.conf".to_string(),
+            "linux/hypr/monitors.conf".to_string(),
+        );
     }
 
     if current == Platform::Macos {
-        entries.linux.insert("~/.config/zed".to_string(), "shared/zed".to_string());
-        entries.macos.insert("~/.config/zed".to_string(), "shared/zed".to_string());
+        entries
+            .linux
+            .insert("~/.config/zed".to_string(), "shared/zed".to_string());
+        entries
+            .macos
+            .insert("~/.config/zed".to_string(), "shared/zed".to_string());
     }
 
     entries

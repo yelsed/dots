@@ -55,9 +55,7 @@ pub fn push(repo: &Repository, remote_name: &str) -> Result<()> {
         .with_context(|| format!("Remote '{}' not found", remote_name))?;
 
     let head = repo.head()?;
-    let branch = head
-        .shorthand()
-        .unwrap_or("main");
+    let branch = head.shorthand().unwrap_or("main");
     let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
 
     let mut push_opts = PushOptions::new();
@@ -295,10 +293,8 @@ fn credential_callback(
     }
     if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
         // Try git credential helper via environment
-        if let (Ok(user), Ok(pass)) = (
-            std::env::var("GIT_USERNAME"),
-            std::env::var("GIT_PASSWORD"),
-        ) {
+        if let (Ok(user), Ok(pass)) = (std::env::var("GIT_USERNAME"), std::env::var("GIT_PASSWORD"))
+        {
             return Cred::userpass_plaintext(&user, &pass);
         }
     }

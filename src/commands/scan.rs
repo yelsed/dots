@@ -66,11 +66,7 @@ pub fn run(target: Option<String>, platforms_arg: Option<String>) -> Result<()> 
             .collect();
         if filtered.is_empty() {
             let names: Vec<_> = presets.iter().map(|p| p.agent_name).collect();
-            anyhow::bail!(
-                "Unknown target '{}'. Available: {}",
-                t,
-                names.join(", ")
-            );
+            anyhow::bail!("Unknown target '{}'. Available: {}", t, names.join(", "));
         }
         filtered
     } else {

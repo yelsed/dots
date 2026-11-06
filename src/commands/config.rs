@@ -9,7 +9,10 @@ pub fn run() -> Result<()> {
     let toml_path = repo_root.join("dots.toml");
 
     if !toml_path.exists() {
-        bail!("dots.toml not found at {}. Run 'dots init' first.", toml_path.display());
+        bail!(
+            "dots.toml not found at {}. Run 'dots init' first.",
+            toml_path.display()
+        );
     }
 
     let path_str = toml_path.display().to_string();

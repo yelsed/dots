@@ -38,10 +38,7 @@ pub fn run(message: Option<String>) -> Result<()> {
         if changed_files.len() == 1 {
             format!("sync: {}", changed_files[0])
         } else {
-            format!(
-                "sync: {}",
-                changed_files.join(", ")
-            )
+            format!("sync: {}", changed_files.join(", "))
         }
     });
 
@@ -52,12 +49,11 @@ pub fn run(message: Option<String>) -> Result<()> {
     match git::push(&repo, &config.repo.remote) {
         Ok(()) => println!("{} {}", "Pushed to".green(), config.repo.remote),
         Err(e) => {
+            eprintln!("{} Push failed: {}", "Warning:".yellow(), e);
             eprintln!(
-                "{} Push failed: {}",
-                "Warning:".yellow(),
-                e
+                "Changes are committed locally. Push manually with: git -C {} push",
+                repo_root.display()
             );
-            eprintln!("Changes are committed locally. Push manually with: git -C {} push", repo_root.display());
         }
     }
 

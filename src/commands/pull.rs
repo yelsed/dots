@@ -19,10 +19,18 @@ pub fn run() -> Result<()> {
             println!("{}", "Already up to date.".green());
         }
         git::RemoteStatus::Behind(n) => {
-            println!("Remote is {} commit{} ahead.", n.to_string().yellow(), if *n == 1 { "" } else { "s" });
+            println!(
+                "Remote is {} commit{} ahead.",
+                n.to_string().yellow(),
+                if *n == 1 { "" } else { "s" }
+            );
         }
         git::RemoteStatus::Ahead(n) => {
-            println!("Local is {} commit{} ahead of remote.", n.to_string().cyan(), if *n == 1 { "" } else { "s" });
+            println!(
+                "Local is {} commit{} ahead of remote.",
+                n.to_string().cyan(),
+                if *n == 1 { "" } else { "s" }
+            );
             println!("{}", "Nothing to pull.".green());
             return Ok(());
         }
@@ -51,9 +59,7 @@ pub fn run() -> Result<()> {
 
     for file in &changed {
         // Find matching entry
-        let matching_entry = all_entries.iter().find(|e| {
-            file.starts_with(&e.repo_path)
-        });
+        let matching_entry = all_entries.iter().find(|e| file.starts_with(&e.repo_path));
 
         if let Some(entry) = matching_entry {
             if platform::is_relevant(&entry.platforms) {
@@ -63,11 +69,14 @@ pub fn run() -> Result<()> {
             }
         } else {
             // File not tracked by any entry, still show it
-            applicable.push((file.clone(), crate::config::Entry {
-                source: String::new(),
-                repo_path: file.clone(),
-                platforms: vec![current.clone()],
-            }));
+            applicable.push((
+                file.clone(),
+                crate::config::Entry {
+                    source: String::new(),
+                    repo_path: file.clone(),
+                    platforms: vec![current.clone()],
+                },
+            ));
         }
     }
 
@@ -129,7 +138,12 @@ pub fn run() -> Result<()> {
         }
     }
 
-    println!("\n{} {} change{} applied.", "Done!".green().bold(), applied, if applied == 1 { "" } else { "s" });
+    println!(
+        "\n{} {} change{} applied.",
+        "Done!".green().bold(),
+        applied,
+        if applied == 1 { "" } else { "s" }
+    );
 
     Ok(())
 }

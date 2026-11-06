@@ -71,7 +71,11 @@ pub fn run(force: bool) -> Result<()> {
             .iter()
             .enumerate()
             .map(|(i, e)| {
-                let tag = if i >= conflict_start { " (overwrite)" } else { "" };
+                let tag = if i >= conflict_start {
+                    " (overwrite)"
+                } else {
+                    ""
+                };
                 format!("{} <- {}{}", e.source, e.repo_path, tag)
             })
             .collect();
@@ -105,7 +109,12 @@ pub fn run(force: bool) -> Result<()> {
             std::fs::create_dir_all(parent)?;
         }
         sync::copy_entry(&repo_path, &source)?;
-        println!("  {} {} -> {}", "link".green(), entry.repo_path, entry.source);
+        println!(
+            "  {} {} -> {}",
+            "link".green(),
+            entry.repo_path,
+            entry.source
+        );
     }
 
     println!();

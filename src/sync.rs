@@ -152,8 +152,8 @@ pub fn last_modified(path: &Path) -> Result<Option<SystemTime>> {
         return Ok(None);
     }
     if path.is_file() {
-        let meta = fs::metadata(path)
-            .with_context(|| format!("Failed to stat {}", path.display()))?;
+        let meta =
+            fs::metadata(path).with_context(|| format!("Failed to stat {}", path.display()))?;
         return Ok(Some(meta.modified()?));
     }
     // Directory: walk and take the max mtime

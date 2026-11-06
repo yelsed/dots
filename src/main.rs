@@ -106,7 +106,12 @@ fn main() -> Result<()> {
         Commands::Push { message } => commands::push::run(message),
         Commands::Status { no_fetch, verbose } => commands::status::run(no_fetch, verbose),
         Commands::Link { force } => commands::link::run(force),
-        Commands::Rsync { path, host, dest, dry_run } => commands::rsync::run(path, host, dest, dry_run),
+        Commands::Rsync {
+            path,
+            host,
+            dest,
+            dry_run,
+        } => commands::rsync::run(path, host, dest, dry_run),
         Commands::Config => commands::config::run(),
         Commands::Update { check } => commands::update::run(check),
         Commands::Scan { target, platforms } => commands::scan::run(target, platforms),
