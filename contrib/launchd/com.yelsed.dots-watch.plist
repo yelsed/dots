@@ -6,9 +6,9 @@
     <string>com.yelsed.dots-watch</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/sh</string>
-        <string>-c</string>
-        <string>exec "$HOME/.cargo/bin/dots" watch --poll-interval 5</string>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>exec dots watch --poll-interval 5</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
