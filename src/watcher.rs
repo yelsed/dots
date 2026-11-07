@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 use crate::config::{DotsConfig, Entry};
 use crate::git;
-use crate::platform;
 use crate::sync;
 
 /// Run the file watcher daemon
@@ -177,7 +176,7 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
             if count == 1 { "" } else { "s" },
             reason
         );
-        send_notification("dots", &body);
+        send_notification("dots", &body, Some("pull"));
         Ok(Vec::new())
     };
 
@@ -239,7 +238,7 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
     }
 
     if let Err(error) = git::pull(&repo, remote_name) {
-        send_notification("dots", &format!("Pull failed: {}", error));
+        send_notification("dots", &format!("Pull failed: {}", error), None);
         return Err(error);
     }
     println!(
@@ -259,7 +258,7 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
             Ok(())
         };
         match result {
-            Ok(()) => send_notification("dots", &format!("Applied {}", entry.source)),
+            Ok(()) => send_notification("dots", &format!("Applied {}", entry.source), None),
             Err(error) => {
                 send_notification(
                     "dots",
@@ -267,6 +266,7 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
                         "Could not apply {}, run `dots link`: {:#}",
                         entry.source, error
                     ),
+                    Some("link"),
                 );
                 failed.push(source);
             }
@@ -276,27 +276,82 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
     Ok(failed)
 }
 
-/// Send a desktop notification
-fn send_notification(summary: &str, body: &str) {
-    if platform::Platform::current() == platform::Platform::Linux {
-        // Use notify-rust for Linux (D-Bus)
-        let _ = notify_rust::Notification::new()
-            .summary(summary)
-            .body(body)
-            .timeout(10000)
-            .show();
-    } else if platform::Platform::current() == platform::Platform::Macos {
-        // Use osascript for macOS
-        let script = format!(
-            "display notification \"{}\" with title \"{}\"",
-            body.replace('"', "\\\""),
-            summary.replace('"', "\\\"")
-        );
-        let _ = std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .output();
+/// Send a desktop notification. With `click_command`, a dots subcommand such
+/// as "pull", clicking the notification opens a terminal running it.
+fn send_notification(summary: &str, body: &str, click_command: Option<&'static str>) {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let mut notification = notify_rust::Notification::new();
+        notification.summary(summary).body(body).timeout(30000);
+        if click_command.is_some() {
+            notification.action("default", "Open");
+        }
+        if let (Ok(handle), Some(command)) = (notification.show(), click_command) {
+            std::thread::spawn(move || {
+                handle.wait_for_action(|action| {
+                    if action == "default" {
+                        open_terminal(command);
+                    }
+                })
+            });
+        }
     }
-    // Always print to terminal too
-    println!("[notify] {} — {}", summary, body);
+
+    #[cfg(target_os = "macos")]
+    {
+        // osascript notifications cannot run anything on click; terminal-notifier can
+        let on_click = click_command.map(|command| {
+            format!(
+                "osascript -e 'tell application \"Terminal\" to do script \"{} {}\"' -e 'tell application \"Terminal\" to activate'",
+                dots_executable(),
+                command
+            )
+        });
+        let mut notifier = std::process::Command::new("terminal-notifier");
+        notifier.args(["-title", summary, "-message", body]);
+        if let Some(on_click) = &on_click {
+            notifier.args(["-execute", on_click.as_str()]);
+        }
+        if notifier.output().is_err() {
+            let script = format!(
+                "display notification \"{}\" with title \"{}\"",
+                body.replace('"', "\\\""),
+                summary.replace('"', "\\\"")
+            );
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(&script)
+                .output();
+        }
+    }
+
+    let _ = click_command;
+    println!("[notify] {}: {}", summary, body);
+}
+
+fn dots_executable() -> String {
+    std::env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "dots".to_string())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_terminal(command: &str) {
+    let script = format!(
+        "'{}' {}; printf '\\nPress Enter to close '; read _",
+        dots_executable(),
+        command
+    );
+    match std::process::Command::new("xdg-terminal-exec")
+        .args(["sh", "-c", &script])
+        .spawn()
+    {
+        Ok(mut terminal) => {
+            let _ = terminal.wait();
+        }
+        Err(error) => eprintln!(
+            "Could not open a terminal with xdg-terminal-exec: {}",
+            error
+        ),
+    }
 }
