@@ -63,6 +63,12 @@ fn default_remote() -> String {
 pub struct WatchConfig {
     #[serde(default = "default_debounce")]
     pub debounce_secs: u64,
+    /// Names skipped anywhere inside a folder entry (copy, compare, status, watcher)
+    #[serde(default)]
+    pub ignore: Vec<String>,
+    /// Folder entries the watcher applies from the remote without `dots pull`
+    #[serde(default)]
+    pub auto_apply: Vec<String>,
 }
 
 fn default_debounce() -> u64 {
@@ -88,10 +94,10 @@ impl Entry {
 
 impl DotsConfig {
     pub fn load(path: &Path) -> Result<Self> {
-        let content =
-            std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-        let mut config: DotsConfig =
-            toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let mut config: DotsConfig = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", path.display()))?;
 
         let mut needs_save = false;
 
@@ -118,7 +124,8 @@ impl DotsConfig {
 
     pub fn save(&self, path: &Path) -> Result<()> {
         let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
-        std::fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))?;
+        std::fs::write(path, content)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
         Ok(())
     }
 
@@ -215,9 +222,7 @@ impl DotsConfig {
             return Ok(dotfiles);
         }
 
-        anyhow::bail!(
-            "Could not find dots.toml. Set DOTS_REPO or run 'dots init' in ~/dotfiles"
-        )
+        anyhow::bail!("Could not find dots.toml. Set DOTS_REPO or run 'dots init' in ~/dotfiles")
     }
 
     pub fn load_default() -> Result<(Self, PathBuf)> {

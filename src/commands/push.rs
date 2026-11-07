@@ -10,7 +10,7 @@ pub fn run(message: Option<String>) -> Result<()> {
     let entries = config.platform_entries();
 
     println!("{}", "Scanning entries...".bold());
-    let changes = sync::diff_summary(&entries, &repo_root)?;
+    let changes = sync::diff_summary(&entries, &repo_root, &config.watch.ignore)?;
 
     let modified: Vec<_> = changes
         .iter()
@@ -29,7 +29,7 @@ pub fn run(message: Option<String>) -> Result<()> {
         let source = change.entry.expanded_source();
         let repo_path = change.entry.full_repo_path(&repo_root);
 
-        sync::copy_entry(&source, &repo_path)?;
+        sync::copy_entry(&source, &repo_path, &config.watch.ignore)?;
         changed_files.push(change.entry.repo_path.clone());
         println!("  {} {}", "->".green(), change.entry.repo_path);
     }
@@ -38,10 +38,7 @@ pub fn run(message: Option<String>) -> Result<()> {
         if changed_files.len() == 1 {
             format!("sync: {}", changed_files[0])
         } else {
-            format!(
-                "sync: {}",
-                changed_files.join(", ")
-            )
+            format!("sync: {}", changed_files.join(", "))
         }
     });
 
@@ -52,12 +49,11 @@ pub fn run(message: Option<String>) -> Result<()> {
     match git::push(&repo, &config.repo.remote) {
         Ok(()) => println!("{} {}", "Pushed to".green(), config.repo.remote),
         Err(e) => {
+            eprintln!("{} Push failed: {}", "Warning:".yellow(), e);
             eprintln!(
-                "{} Push failed: {}",
-                "Warning:".yellow(),
-                e
+                "Changes are committed locally. Push manually with: git -C {} push",
+                repo_root.display()
             );
-            eprintln!("Changes are committed locally. Push manually with: git -C {} push", repo_root.display());
         }
     }
 

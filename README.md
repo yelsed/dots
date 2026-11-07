@@ -74,7 +74,8 @@ dots pull                  # pick which changed entries to apply
 
 How push and pull behave:
 
-- `dots push` only adds and overwrites. A file that exists in the repo but no longer on this machine stays in the repo. Remove it from the repo with git if it should go.
+- For a single file, `dots push` overwrites the copy in the repo. For a folder, the repo copy is made to match the system: files and links that no longer exist on this machine are removed from the repo. The same holds the other way round for `dots pull` and `dots link`, which remove files from the system folder that the repo no longer has.
+- Inside a tracked folder, symbolic links are copied as links with the same target, never followed. A link that points to an absolute path outside your home folder (for example a skill installed by a system package) belongs to the machine: it is left out of the repo and never removed. On Windows, links are skipped with a warning.
 - `dots push` does not pull first. When the remote has commits you do not have, the commit is made locally and the push fails. Run `git -C ~/dotfiles pull --ff-only` (or `dots pull`) and push again with `git -C ~/dotfiles push`.
 - `dots pull` only fast-forwards. If the repo has local commits the remote does not have, resolve it with git by hand.
 - `dots pull` is interactive, so run it in a real terminal.
@@ -87,6 +88,8 @@ Run a background watcher that auto-syncs on file changes and periodically polls 
 dots watch
 dots watch --poll-interval 15   # Poll every 15 minutes
 ```
+
+By default the watcher only notifies you when the remote has new commits. Folders listed in `auto_apply` (see Configuration) are applied for you instead: the watcher fast-forwards the repo and copies the changed folders to your system. It only does that when nothing local is at stake. If the dotfiles repository has uncommitted changes, if a pulled change falls outside `auto_apply`, or if a changed folder also has local changes that are not pushed yet, it does not pull and notifies you to run `dots pull`. A local change is never overwritten, and never pushed back over the remote.
 
 ### Status
 
@@ -146,6 +149,8 @@ remote = "origin"          # git remote name, not a URL
 
 [watch]
 debounce_secs = 3
+ignore = [".trash", "synced"]                      # names skipped anywhere inside a folder entry
+auto_apply = ["~/.claude/skills", "~/.agents/skills"]  # folders the watcher applies from the remote
 
 [entries.shared]           # every platform
 "~/.config/nvim" = "shared/nvim"

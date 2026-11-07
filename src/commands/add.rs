@@ -40,7 +40,12 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
             .collect::<Vec<_>>()
     } else {
         // Interactive selection
-        let options = vec!["shared (linux + macos)", "linux only", "macos only", "all platforms"];
+        let options = vec![
+            "shared (linux + macos)",
+            "linux only",
+            "macos only",
+            "all platforms",
+        ];
         let selection = Select::new()
             .with_prompt("Which platforms?")
             .items(&options)
@@ -67,7 +72,7 @@ pub fn run(path: String, platforms_arg: Option<String>) -> Result<()> {
 
     // Copy to repo
     let full_repo_path = repo_root.join(&repo_path);
-    sync::copy_entry(&source_path, &full_repo_path)?;
+    sync::copy_entry(&source_path, &full_repo_path, &config.watch.ignore)?;
     println!("  {} Copied to repo", "->".green());
 
     // Add entry to config

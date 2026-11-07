@@ -35,7 +35,7 @@ pub fn run(force: bool) -> Result<()> {
             continue;
         }
 
-        if sync::has_changes(&repo_path, &source)? {
+        if sync::has_changes(&repo_path, &source, &config.watch.ignore)? {
             conflicts.push((*entry).clone());
         } else {
             already_synced.push((*entry).clone());
@@ -71,7 +71,11 @@ pub fn run(force: bool) -> Result<()> {
             .iter()
             .enumerate()
             .map(|(i, e)| {
-                let tag = if i >= conflict_start { " (overwrite)" } else { "" };
+                let tag = if i >= conflict_start {
+                    " (overwrite)"
+                } else {
+                    ""
+                };
                 format!("{} <- {}{}", e.source, e.repo_path, tag)
             })
             .collect();
@@ -104,8 +108,13 @@ pub fn run(force: bool) -> Result<()> {
         if let Some(parent) = source.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        sync::copy_entry(&repo_path, &source)?;
-        println!("  {} {} -> {}", "link".green(), entry.repo_path, entry.source);
+        sync::copy_entry(&repo_path, &source, &config.watch.ignore)?;
+        println!(
+            "  {} {} -> {}",
+            "link".green(),
+            entry.repo_path,
+            entry.source
+        );
     }
 
     println!();
