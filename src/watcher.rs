@@ -58,6 +58,8 @@ pub fn run_watcher(
     let mut pending_change = false;
     // Entries pulled but not applied to the system: pushing them would revert the remote
     let mut unapplied: Vec<PathBuf> = Vec::new();
+    // Remote commit already notified about, so a waiting change is announced once, not every poll
+    let mut notified_remote: Option<git2::Oid> = None;
 
     for path in &config.watch.auto_apply {
         let expanded = crate::config::expand_tilde(path);
@@ -92,7 +94,7 @@ pub fn run_watcher(
         // Remote poll
         if last_poll.elapsed() >= poll_interval {
             last_poll = Instant::now();
-            match check_remote(config, repo_root, &entries) {
+            match check_remote(config, repo_root, &entries, &mut notified_remote) {
                 Ok(failed) => unapplied.extend(failed),
                 Err(e) => eprintln!("Remote check error: {}", e),
             }
@@ -162,14 +164,24 @@ fn sync_and_push(
 /// only when nothing local would be overwritten or pushed back over the
 /// remote: otherwise notify and leave it to `dots pull`.
 /// Returns the sources that were pulled but could not be applied.
-fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Result<Vec<PathBuf>> {
+fn check_remote(
+    config: &DotsConfig,
+    repo_root: &Path,
+    entries: &[Entry],
+    notified_remote: &mut Option<git2::Oid>,
+) -> Result<Vec<PathBuf>> {
     let remote_name = &config.repo.remote;
     let ignore = &config.watch.ignore;
     let repo = git::open_repo(repo_root)?;
     let git::RemoteStatus::Behind(count) = git::fetch_and_check(&repo, remote_name)? else {
         return Ok(Vec::new());
     };
+    let remote_head = git::remote_head(&repo, remote_name)?;
+    let first_notice = notified_remote.replace(remote_head) != Some(remote_head);
     let ask_for_manual_pull = |reason: &str| {
+        if !first_notice {
+            return Ok(Vec::new());
+        }
         let body = format!(
             "{} dotfile change{} available, run `dots pull` to apply{}",
             count,
@@ -238,7 +250,9 @@ fn check_remote(config: &DotsConfig, repo_root: &Path, entries: &[Entry]) -> Res
     }
 
     if let Err(error) = git::pull(&repo, remote_name) {
-        send_notification("dots", &format!("Pull failed: {}", error), None);
+        if first_notice {
+            send_notification("dots", &format!("Pull failed: {}", error), None);
+        }
         return Err(error);
     }
     println!(
@@ -308,7 +322,8 @@ fn send_notification(summary: &str, body: &str, click_command: Option<&'static s
             )
         });
         let mut notifier = std::process::Command::new("terminal-notifier");
-        notifier.args(["-title", summary, "-message", body]);
+        // One group per summary: a new notification replaces the old one instead of piling up
+        notifier.args(["-title", summary, "-message", body, "-group", summary]);
         if let Some(on_click) = &on_click {
             notifier.args(["-execute", on_click.as_str()]);
         }
