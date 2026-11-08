@@ -206,6 +206,13 @@ pub fn remote_head_time(repo: &Repository, remote_name: &str) -> Result<i64> {
     Ok(commit.time().seconds())
 }
 
+/// Commit the remote tracking branch points at
+pub fn remote_head(repo: &Repository, remote_name: &str) -> Result<git2::Oid> {
+    let head = repo.head()?;
+    let branch_name = head.shorthand().unwrap_or("main");
+    Ok(repo.refname_to_id(&format!("refs/remotes/{}/{}", remote_name, branch_name))?)
+}
+
 /// Get list of changed files between local HEAD and remote HEAD
 pub fn changed_files(repo: &Repository, remote_name: &str) -> Result<Vec<String>> {
     let head = repo.head()?;
