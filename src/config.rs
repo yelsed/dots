@@ -131,16 +131,14 @@ impl DotsConfig {
 
     /// Collect all entries across every section with computed platform lists.
     pub fn all_entries(&self) -> Vec<Entry> {
-        let mut map: BTreeMap<String, (String, Vec<Platform>)> = BTreeMap::new();
+        // Keyed by source and repo path: one source may map to a different repo path per platform
+        let mut map: BTreeMap<(String, String), Vec<Platform>> = BTreeMap::new();
 
         // Shared → all platforms
         for (source, repo_path) in &self.entries.shared {
             map.insert(
-                source.clone(),
-                (
-                    repo_path.clone(),
-                    vec![Platform::Linux, Platform::Macos, Platform::Windows],
-                ),
+                (source.clone(), repo_path.clone()),
+                vec![Platform::Linux, Platform::Macos, Platform::Windows],
             );
         }
 
@@ -152,21 +150,15 @@ impl DotsConfig {
 
         for (section, platform) in &sections {
             for (source, repo_path) in *section {
-                match map.get_mut(source) {
-                    Some((_, platforms)) => {
-                        if !platforms.contains(platform) {
-                            platforms.push(platform.clone());
-                        }
-                    }
-                    None => {
-                        map.insert(source.clone(), (repo_path.clone(), vec![platform.clone()]));
-                    }
+                let platforms = map.entry((source.clone(), repo_path.clone())).or_default();
+                if !platforms.contains(platform) {
+                    platforms.push(platform.clone());
                 }
             }
         }
 
         map.into_iter()
-            .map(|(source, (repo_path, platforms))| Entry {
+            .map(|((source, repo_path), platforms)| Entry {
                 source,
                 repo_path,
                 platforms,
@@ -248,4 +240,53 @@ pub fn contract_tilde(path: &Path) -> String {
         }
     }
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn same_source_keeps_its_repo_path_per_platform() {
+        let mut config: DotsConfig = toml::from_str(
+            r#"
+            [repo]
+            remote = "origin"
+            [watch]
+            debounce_secs = 3
+            [entries.shared]
+            [entries.linux]
+            "~/.claude/CLAUDE.md" = "linux/.claude/CLAUDE.md"
+            [entries.macos]
+            "~/.claude/CLAUDE.md" = "shared/.claude/CLAUDE.md"
+            [entries.windows]
+            "#,
+        )
+        .unwrap();
+        config.add_entry(
+            "~/.zshrc",
+            "shared/.zshrc",
+            &[Platform::Linux, Platform::Macos],
+        );
+
+        let repo_path_for = |platform: Platform, source: &str| {
+            let matches: Vec<String> = config
+                .all_entries()
+                .into_iter()
+                .filter(|entry| entry.source == source && entry.platforms.contains(&platform))
+                .map(|entry| entry.repo_path)
+                .collect();
+            assert_eq!(matches.len(), 1, "{:?} {}", platform, source);
+            matches[0].clone()
+        };
+        assert_eq!(
+            repo_path_for(Platform::Linux, "~/.claude/CLAUDE.md"),
+            "linux/.claude/CLAUDE.md"
+        );
+        assert_eq!(
+            repo_path_for(Platform::Macos, "~/.claude/CLAUDE.md"),
+            "shared/.claude/CLAUDE.md"
+        );
+        assert_eq!(repo_path_for(Platform::Macos, "~/.zshrc"), "shared/.zshrc");
+    }
 }
