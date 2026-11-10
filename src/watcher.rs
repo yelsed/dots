@@ -313,31 +313,34 @@ fn send_notification(summary: &str, body: &str, click_command: Option<&'static s
 
     #[cfg(target_os = "macos")]
     {
-        // osascript notifications cannot run anything on click; terminal-notifier can
-        let on_click = click_command.map(|command| {
-            format!(
-                "osascript -e 'tell application \"Terminal\" to do script \"{} {}\"' -e 'tell application \"Terminal\" to activate'",
-                dots_executable(),
+        let quote = |text: &str| format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""));
+        // Clicking a plain notification only opens Script Editor, so a clickable one is a dialog
+        let script = match click_command {
+            Some(command) => format!(
+                "if button returned of (display dialog {} with title {} buttons {{\"Later\", \"Open dots {}\"}} default button 2 giving up after 3600) is \"Open dots {}\" then\n\
+                 tell application \"Terminal\" to do script (quoted form of {}) & \" {}\"\n\
+                 tell application \"Terminal\" to activate\n\
+                 end if",
+                quote(body),
+                quote(summary),
+                command,
+                command,
+                quote(&dots_executable()),
                 command
-            )
-        });
-        let mut notifier = std::process::Command::new("terminal-notifier");
-        // One group per summary: a new notification replaces the old one instead of piling up
-        notifier.args(["-title", summary, "-message", body, "-group", summary]);
-        if let Some(on_click) = &on_click {
-            notifier.args(["-execute", on_click.as_str()]);
-        }
-        if notifier.output().is_err() {
-            let script = format!(
-                "display notification \"{}\" with title \"{}\"",
-                body.replace('"', "\\\""),
-                summary.replace('"', "\\\"")
-            );
+            ),
+            None => format!(
+                "display notification {} with title {}",
+                quote(body),
+                quote(summary)
+            ),
+        };
+        // A dialog waits for an answer; the watcher must keep running meanwhile
+        std::thread::spawn(move || {
             let _ = std::process::Command::new("osascript")
                 .arg("-e")
                 .arg(&script)
                 .output();
-        }
+        });
     }
 
     let _ = click_command;
